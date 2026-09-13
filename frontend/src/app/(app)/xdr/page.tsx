@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import XdrDecoder from "@/components/XdrDecoder";
+import { decodeXdrAction } from "@/lib/actions";
+import { base64FromQueryParam } from "@/lib/xdr";
 
 export const metadata: Metadata = {
   title: "XDR Decoder | Prism",
@@ -7,7 +9,14 @@ export const metadata: Metadata = {
     "Decode raw base64 Stellar/Soroban XDR — transaction envelopes, results, meta, ledger entries and keys, contract spec entries, and ScVals.",
 };
 
-export default function XdrPage() {
+interface Props {
+  searchParams: { input?: string };
+}
+
+export default async function XdrPage({ searchParams }: Props) {
+  const input = searchParams.input ? base64FromQueryParam(searchParams.input) : undefined;
+  const result = input ? await decodeXdrAction(input) : null;
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">XDR Decoder</h1>
@@ -17,7 +26,7 @@ export default function XdrPage() {
         the type by decoding and re-encoding each candidate and keeping the one that reproduces your input
         exactly.
       </p>
-      <XdrDecoder />
+      <XdrDecoder initialInput={input} initialResult={result} />
     </div>
   );
 }

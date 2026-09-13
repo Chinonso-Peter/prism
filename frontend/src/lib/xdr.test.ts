@@ -10,6 +10,7 @@ import {
   identifyXdr,
   decodeAnyXdr,
   parseContractEvents,
+  base64FromQueryParam,
   type ParsedEventSpec,
 } from "./xdr";
 import { labelEventTopics, matchEventSpec } from "./event-spec";
@@ -353,5 +354,20 @@ describe("matchEventSpec / labelEventTopics", () => {
 
   it("labels nothing for an event with no indexed fields", () => {
     expect(labelEventTopics(["bumped"], specs[1])).toEqual([]);
+  });
+});
+
+describe("base64FromQueryParam", () => {
+  it("restores pluses that a query string decoded as spaces", () => {
+    expect(base64FromQueryParam("AAAAAgAAAAALEDS eRmphqUKYJ")).toBe("AAAAAgAAAAALEDS+eRmphqUKYJ");
+  });
+
+  it("leaves a correctly percent-encoded blob untouched", () => {
+    const blob = "AAAAAgAAAAALEDS+eRmphqUKYJ/w==";
+    expect(base64FromQueryParam(blob)).toBe(blob);
+  });
+
+  it("leaves the other base64 characters alone", () => {
+    expect(base64FromQueryParam("a/b+c=")).toBe("a/b+c=");
   });
 });

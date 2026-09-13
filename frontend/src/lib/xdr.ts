@@ -272,6 +272,18 @@ export interface XdrDecodeResult {
   fields: XdrField[];
 }
 
+/**
+ * Recover a base64 blob from a URL query parameter.
+ *
+ * Query strings decode "+" as a space, and base64 is full of pluses. Links
+ * Prism generates are percent-encoded and round-trip exactly, but a
+ * hand-assembled URL won't be — and base64 has no legitimate spaces, so any
+ * space in a query parameter was a plus.
+ */
+export function base64FromQueryParam(raw: string): string {
+  return raw.replace(/ /g, "+");
+}
+
 /** Strip whitespace/newlines that survive a copy-paste out of a terminal or JSON blob. */
 function normalizeBase64(input: string): string {
   return input.replace(/\s+/g, "");
