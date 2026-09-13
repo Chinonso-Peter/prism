@@ -44,6 +44,50 @@ export default function ContractOverview({ info, wasm }: Props) {
           </div>
         </div>
       )}
+      {wasm && wasm.events.length > 0 && (
+        <div className="pt-2">
+          <p className="text-prism-muted text-sm mb-2">Events ({wasm.events.length})</p>
+          <div className="rounded-lg border border-prism-border overflow-x-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {wasm.events.map((event) => {
+                  const topics = [
+                    ...event.prefixTopics.map((t) => `"${t}"`),
+                    ...event.params
+                      .filter((p) => p.location === "topic")
+                      .map((p) => `${p.name}: ${p.type}`),
+                  ];
+                  const data = event.params
+                    .filter((p) => p.location === "data")
+                    .map((p) => `${p.name}: ${p.type}`);
+
+                  return (
+                    <tr key={event.name} className="border-b border-prism-border last:border-0">
+                      <td
+                        className="px-3 py-2 font-mono text-prism-green whitespace-nowrap align-top"
+                        title={event.doc}
+                      >
+                        {event.name}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-prism-muted">
+                        <span className="text-white">topics</span> [{topics.join(", ")}]
+                        {data.length > 0 && (
+                          <>
+                            {" "}
+                            <span className="text-white">data</span>
+                            <span className="opacity-60"> ({event.dataFormat})</span> [
+                            {data.join(", ")}]
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {wasm && wasm.functions.length === 0 && (
         <p className="text-prism-muted text-xs pt-2">
           No embedded ABI found for this contract — not every contract includes one.
