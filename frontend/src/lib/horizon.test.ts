@@ -72,9 +72,52 @@ describe("getNetworkPulse", () => {
 });
 
 describe("getTransaction", () => {
+  const transaction = {
+    hash: "deadbeef",
+    ledger: 4671563,
+    created_at: "2026-09-14T10:23:22Z",
+    source_account: "GCLWKHHH",
+    // Horizon sends int64 fields as JSON strings; fees can exceed 2^53.
+    fee_charged: "1234567",
+    operation_count: 1,
+    successful: true,
+    memo: null,
+    envelope_xdr: "AAAAAg==",
+  };
+
   it("throws on a non-ok response instead of returning partial data", async () => {
     mockFetchOnce({}, false);
     const { getTransaction } = await import("./horizon");
     await expect(getTransaction("deadbeef")).rejects.toThrow(/Horizon error 500/);
+  });
+
+  it("converts Horizon's string fee into a number", async () => {
+    mockFetchOnce(transaction);
+    const { getTransaction } = await import("./horizon");
+    const tx = await getTransaction("deadbeef");
+
+    expect(tx.fee).toBe(1234567);
+    expect(typeof tx.fee).toBe("number");
+    // The point of the conversion: a string has no thousands separators, so
+    // passing one through renders "1234567 stroops" instead of "1,234,567".
+    expect(tx.fee.toLocaleString()).toBe((1234567).toLocaleString());
+  });
+
+  it("accepts a numeric fee too, rather than assuming one encoding", async () => {
+    mockFetchOnce({ ...transaction, fee_charged: 100 });
+    const { getTransaction } = await import("./horizon");
+    expect((await getTransaction("deadbeef")).fee).toBe(100);
+  });
+
+  it("reports an absent memo as undefined, not null", async () => {
+    mockFetchOnce(transaction);
+    const { getTransaction } = await import("./horizon");
+    expect(await getTransaction("deadbeef").then((t) => t.memo)).toBeUndefined();
+  });
+
+  it("keeps a memo that is present", async () => {
+    mockFetchOnce({ ...transaction, memo: "hello" });
+    const { getTransaction } = await import("./horizon");
+    expect((await getTransaction("deadbeef")).memo).toBe("hello");
   });
 });
