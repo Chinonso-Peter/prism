@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { xdr } from "@stellar/stellar-sdk";
 import { getTransaction, isNotFound } from "@/lib/horizon";
+import CopyButton from "@/components/CopyButton";
 import { getInvocationReturnValue } from "@/lib/soroban";
 import { decodeInvocation, getResourceUsage } from "@/lib/xdr";
 import { formatDate, formatFee, stroopsToXlm, formatNumber } from "@/lib/format";
@@ -27,7 +28,10 @@ export default async function TxPage({ params }: Props) {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">Transaction</h1>
-      <p className="text-prism-muted font-mono text-sm mb-8 break-all">{params.hash}</p>
+      <div className="flex items-start gap-2 mb-8">
+        <p className="text-prism-muted font-mono text-sm break-all">{params.hash}</p>
+        <CopyButton value={params.hash} what="transaction hash" />
+      </div>
 
       <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
         <Row label="Status" value={tx.successful ? "✓ Success" : "✗ Failed"} />

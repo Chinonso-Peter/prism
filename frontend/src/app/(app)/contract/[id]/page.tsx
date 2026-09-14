@@ -4,6 +4,7 @@ import ContractStorageView from "@/components/ContractStorageView";
 import LiveInvocationHistory from "@/components/LiveInvocationHistory";
 import InvokeTool from "@/components/InvokeTool";
 import LiveEventLog from "@/components/LiveEventLog";
+import CopyButton from "@/components/CopyButton";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,10 @@ export default async function ContractPage({ params }: Props) {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">Contract</h1>
-      <p className="text-prism-muted font-mono text-sm mb-8 break-all">{contractId}</p>
+      <div className="flex items-start gap-2 mb-8">
+        <p className="text-prism-muted font-mono text-sm break-all">{contractId}</p>
+        <CopyButton value={contractId} what="contract ID" />
+      </div>
 
       <div className="grid grid-cols-1 gap-8">
         <section>

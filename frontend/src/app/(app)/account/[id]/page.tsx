@@ -1,4 +1,5 @@
 import { getAccount, isNotFound } from "@/lib/horizon";
+import CopyButton from "@/components/CopyButton";
 import { formatNumber, shortHash } from "@/lib/format";
 import { notFound } from "next/navigation";
 
@@ -28,7 +29,10 @@ export default async function AccountPage({ params }: Props) {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">Account</h1>
-      <p className="text-prism-muted font-mono text-sm mb-8 break-all">{params.id}</p>
+      <div className="flex items-start gap-2 mb-8">
+        <p className="text-prism-muted font-mono text-sm break-all">{params.id}</p>
+        <CopyButton value={params.id} what="account address" />
+      </div>
 
       <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4 mb-8">
         <Row label="Sequence" value={account.sequence} mono />
