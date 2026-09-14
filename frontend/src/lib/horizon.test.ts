@@ -91,6 +91,31 @@ describe("getTransaction", () => {
     await expect(getTransaction("deadbeef")).rejects.toThrow(/Horizon error 500/);
   });
 
+  it("distinguishes a missing transaction from an unreachable Horizon", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getTransaction, isNotFound } = await import("./horizon");
+
+    const missing = await getTransaction("deadbeef").catch((e) => e);
+    expect(isNotFound(missing)).toBe(true);
+    expect(missing.status).toBe(404);
+  });
+
+  it("does not report a server error as not-found", async () => {
+    mockFetchOnce({}, false); // 500
+    const { getTransaction, isNotFound } = await import("./horizon");
+
+    const failed = await getTransaction("deadbeef").catch((e) => e);
+    expect(isNotFound(failed)).toBe(false);
+    expect(failed.status).toBe(500);
+  });
+
+  it("treats a non-Horizon error as not-found-negative", async () => {
+    const { isNotFound } = await import("./horizon");
+    expect(isNotFound(new Error("boom"))).toBe(false);
+    expect(isNotFound(undefined)).toBe(false);
+  });
+
   it("converts Horizon's string fee into a number", async () => {
     mockFetchOnce(transaction);
     const { getTransaction } = await import("./horizon");

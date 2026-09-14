@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { xdr } from "@stellar/stellar-sdk";
-import { getTransaction } from "@/lib/horizon";
+import { getTransaction, isNotFound } from "@/lib/horizon";
 import { getInvocationReturnValue } from "@/lib/soroban";
 import { decodeInvocation, getResourceUsage } from "@/lib/xdr";
 import { formatDate, formatFee, stroopsToXlm, formatNumber } from "@/lib/format";
@@ -14,8 +14,9 @@ export default async function TxPage({ params }: Props) {
   let tx;
   try {
     tx = await getTransaction(params.hash);
-  } catch {
-    notFound();
+  } catch (err) {
+    if (isNotFound(err)) notFound();
+    throw err;
   }
 
   const envelope = xdr.TransactionEnvelope.fromXDR(tx.envelopeXdr, "base64");

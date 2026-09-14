@@ -1,4 +1,4 @@
-import { getAccount } from "@/lib/horizon";
+import { getAccount, isNotFound } from "@/lib/horizon";
 import { formatNumber, shortHash } from "@/lib/format";
 import { notFound } from "next/navigation";
 
@@ -10,8 +10,12 @@ export default async function AccountPage({ params }: Props) {
   let account;
   try {
     account = await getAccount(params.id);
-  } catch {
-    notFound();
+  } catch (err) {
+    // Only a real 404 means "no such account". Anything else — Horizon down,
+    // a timeout, a 5xx — is our problem, not the reader's, and saying "not
+    // found" would tell them something false about the chain.
+    if (isNotFound(err)) notFound();
+    throw err;
   }
 
   const flagLabels = [

@@ -1,4 +1,4 @@
-import { getLedger } from "@/lib/horizon";
+import { getLedger, isNotFound } from "@/lib/horizon";
 import { formatDate, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
 
@@ -11,8 +11,12 @@ export default async function LedgerPage({ params }: Props) {
   if (isNaN(seq)) notFound();
 
   let ledger;
-  try { ledger = await getLedger(seq); }
-  catch { notFound(); }
+  try {
+    ledger = await getLedger(seq);
+  } catch (err) {
+    if (isNotFound(err)) notFound();
+    throw err;
+  }
 
   return (
     <div>

@@ -3,12 +3,31 @@ import { config } from "./config";
 
 const BASE_URL = config.horizonUrl;
 
+/**
+ * A non-ok response from Horizon, carrying the status so callers can tell
+ * "this record doesn't exist" apart from "Horizon didn't answer".
+ */
+export class HorizonError extends Error {
+  constructor(
+    readonly status: number,
+    readonly path: string
+  ) {
+    super(`Horizon error ${status}: ${path}`);
+    this.name = "HorizonError";
+  }
+}
+
+/** True only when Horizon positively reported the record as missing. */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof HorizonError && error.status === 404;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     next: { revalidate: 10 },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`Horizon error ${res.status}: ${path}`);
+  if (!res.ok) throw new HorizonError(res.status, path);
   return res.json();
 }
 
