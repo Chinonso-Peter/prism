@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { xdr, Account, Address, Keypair, Memo, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  xdr,
+  Account,
+  Address,
+  Keypair,
+  Memo,
+  Networks,
+  Operation,
+  StrKey,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
 import {
   decodeScVal,
   scValToDisplay,
@@ -101,6 +111,27 @@ function buildEnvelope(source: Keypair) {
     .build();
 }
 
+/**
+ * A v0 transaction envelope — the pre-Protocol-13 shape, still all over the
+ * chain's history. It carries a bare ed25519 key rather than a muxed account,
+ * which is the part that used to make the decoder throw.
+ */
+function buildV0Envelope(source: Keypair) {
+  const tx = new xdr.TransactionV0({
+    sourceAccountEd25519: StrKey.decodeEd25519PublicKey(source.publicKey()),
+    fee: 100,
+    // SequenceNumber is a typedef of Int64; only the latter is in the .d.ts.
+    seqNum: xdr.Int64.fromString("43"),
+    timeBounds: null,
+    memo: xdr.Memo.memoText(Buffer.from("prism")),
+    operations: [Operation.bumpSequence({ bumpTo: "100" })],
+    ext: new xdr.TransactionV0Ext(0),
+  });
+  return xdr.TransactionEnvelope.envelopeTypeTxV0(
+    new xdr.TransactionV0Envelope({ tx, signatures: [] })
+  );
+}
+
 describe("identifyXdr", () => {
   it("identifies a transaction envelope", () => {
     const envelope = buildEnvelope(Keypair.random()).toXDR();
@@ -174,6 +205,20 @@ describe("decodeAnyXdr", () => {
     expect(fields["Contract"]).toBe(contract);
     expect(fields["Storage key"]).toBe("Admin");
     expect(fields["Durability"]).toBe("persistent");
+  });
+
+  it("summarizes a v0 envelope, which carries a bare key instead of a muxed account", () => {
+    const source = Keypair.random();
+    const result = decodeAnyXdr(buildV0Envelope(source).toXDR("base64"));
+
+    expect(result?.type).toBe("TransactionEnvelope");
+    const fields = Object.fromEntries(result!.fields.map((f) => [f.label, f.value]));
+    expect(fields["Envelope type"]).toBe("envelopeTypeTxV0");
+    expect(fields["Source account"]).toBe(source.publicKey());
+    expect(fields["Fee"]).toBe("100 stroops");
+    expect(fields["Sequence"]).toBe("43");
+    expect(fields["Memo"]).toBe("text: prism");
+    expect(fields["Operations"]).toBe("bumpSequence");
   });
 
   it("returns null for input that isn't XDR", () => {
