@@ -20,9 +20,19 @@ export default async function TxPage({ params }: Props) {
     throw err;
   }
 
-  const envelope = xdr.TransactionEnvelope.fromXDR(tx.envelopeXdr, "base64");
-  const invocation = decodeInvocation(envelope);
-  const resources = getResourceUsage(envelope);
+  // Everything above came from Horizon's JSON and is already good. If the
+  // envelope itself won't parse — a protocol upgrade introducing an operation
+  // this SDK doesn't know, say — that's no reason to throw away the status,
+  // fee and timestamp we can already show.
+  let envelope: xdr.TransactionEnvelope | null = null;
+  try {
+    envelope = xdr.TransactionEnvelope.fromXDR(tx.envelopeXdr, "base64");
+  } catch {
+    envelope = null;
+  }
+
+  const invocation = envelope ? decodeInvocation(envelope) : null;
+  const resources = envelope ? getResourceUsage(envelope) : null;
   const returnValue = invocation ? await getInvocationReturnValue(tx.hash) : null;
 
   return (
@@ -42,6 +52,23 @@ export default async function TxPage({ params }: Props) {
         <Row label="Operations" value={String(tx.operationCount)} />
         {tx.memo && <Row label="Memo" value={tx.memo} />}
       </div>
+
+      {!envelope && (
+        <div className="mt-6 rounded-xl border border-prism-red/30 bg-prism-red/10 p-4">
+          <p className="text-xs text-prism-red">
+            Prism couldn&apos;t decode this transaction&apos;s envelope, so any contract call it
+            contains isn&apos;t shown above. The details that come straight from Horizon are
+            unaffected. This usually means the transaction uses something newer than the XDR
+            definitions Prism was built against.
+          </p>
+          <Link
+            href={`/xdr?input=${encodeURIComponent(tx.envelopeXdr)}`}
+            className="text-xs text-prism-accent hover:underline mt-2 inline-block"
+          >
+            Inspect the raw envelope in the XDR decoder &rarr;
+          </Link>
+        </div>
+      )}
 
       {invocation && (
         <div className="mt-6 rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
