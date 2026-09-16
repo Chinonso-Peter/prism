@@ -496,3 +496,52 @@ describe("labelEventData", () => {
     ]);
   });
 });
+
+describe("coerceArgInput with compound types", () => {
+  it("coerces Vec elements to the declared element type", () => {
+    const vec = coerceArgInput('["a","b"]', "Vec<Symbol>");
+    expect(vec.switch().name).toBe("scvVec");
+    // Inferring from JSON alone yields scvString here, which the contract rejects.
+    expect(vec.vec()!.map((v) => v.switch().name)).toEqual(["scvSymbol", "scvSymbol"]);
+    expect(vec.vec()!.map((v) => v.sym().toString())).toEqual(["a", "b"]);
+  });
+
+  it("coerces a Vec of the widest integer type without falling back to u64", () => {
+    const vec = coerceArgInput("[1,2]", "Vec<I128>");
+    expect(vec.vec()!.map((v) => v.switch().name)).toEqual(["scvI128", "scvI128"]);
+  });
+
+  it("handles a nested Vec", () => {
+    const vec = coerceArgInput('[["a"],["b"]]', "Vec<Vec<Symbol>>");
+    const inner = vec.vec()![0];
+    expect(inner.switch().name).toBe("scvVec");
+    expect(inner.vec()![0].switch().name).toBe("scvSymbol");
+  });
+
+  it("coerces an empty Vec", () => {
+    expect(coerceArgInput("[]", "Vec<Symbol>").vec()).toEqual([]);
+  });
+
+  it("coerces Map keys and values to their declared types, in canonical order", () => {
+    const map = coerceArgInput('{"b":2,"a":1}', "Map<Symbol, U32>");
+    expect(map.switch().name).toBe("scvMap");
+    const entries = map.map()!;
+    expect(entries.map((e) => e.key().sym().toString())).toEqual(["a", "b"]);
+    expect(entries.map((e) => e.val().switch().name)).toEqual(["scvU32", "scvU32"]);
+  });
+
+  it("treats an empty Option as void and a filled one as its inner type", () => {
+    expect(coerceArgInput("", "Option<U32>").switch().name).toBe("scvVoid");
+    expect(coerceArgInput("null", "Option<U32>").switch().name).toBe("scvVoid");
+    expect(coerceArgInput("5", "Option<U32>").switch().name).toBe("scvU32");
+  });
+
+  it("reports what it wanted when the input isn't the right shape", () => {
+    expect(() => coerceArgInput('"a"', "Vec<Symbol>")).toThrow(/expects a JSON array/);
+    expect(() => coerceArgInput("[1]", "Map<Symbol, U32>")).toThrow(/expects a JSON object/);
+  });
+
+  it("still falls back to JSON inference for a contract's own types", () => {
+    expect(coerceArgInput('{"a":1}', "SomeUdtType").switch().name).toBe("scvMap");
+  });
+});

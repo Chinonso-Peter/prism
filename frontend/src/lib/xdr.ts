@@ -3,11 +3,48 @@ import { Address, StrKey, xdr, scValToNative, nativeToScVal } from "@stellar/ste
 import { XdrReader } from "@stellar/js-xdr";
 import type { ResourceUsage, SorobanInvocation } from "@/types";
 
+/** Split a generic's argument list on top-level commas, respecting nesting. */
+function splitTypeArgs(inner: string): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of inner) {
+    if (char === "<") depth++;
+    if (char === ">") depth--;
+    if (char === "," && depth === 0) {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+/** Match a generic spec type like "Vec<Symbol>" or "Map<Symbol, U32>". */
+function parseGeneric(specType: string): { name: string; args: string[] } | null {
+  const match = /^([A-Za-z]+)<(.+)>$/.exec(specType.trim());
+  if (!match) return null;
+  return { name: match[1].toLowerCase(), args: splitTypeArgs(match[2]) };
+}
+
+/** Feed a JSON element back through the string-based coercion. */
+function elementInput(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
 /**
  * Coerce a plain-text form input into an ScVal for a given spec type name
  * (as produced by parseContractSpec, e.g. "U32", "Address", "Vec<Symbol>").
- * Scalar types get direct, exact conversions; compound/UDT types fall back
- * to best-effort JSON parsing — good enough for a preview tool, not a
+ *
+ * Scalars convert exactly. Compound types are decomposed and their elements
+ * coerced against the declared element types, because inferring from JSON
+ * alone gets them wrong in ways the contract rejects: ["a"] as Vec<Symbol>
+ * infers scvString, and [1] as Vec<i128> infers scvU64.
+ *
+ * Genuinely unknown types (a contract's own structs and enums) still fall back
+ * to best-effort JSON inference — good enough for a preview tool, not a
  * substitute for a typed SDK binding.
  */
 export function coerceArgInput(raw: string, specType: string): xdr.ScVal {
@@ -23,6 +60,42 @@ export function coerceArgInput(raw: string, specType: string): xdr.ScVal {
   if (t === "string") return nativeToScVal(raw, { type: "string" });
   if (t === "address") return nativeToScVal(raw, { type: "address" });
   if (t === "bytes") return nativeToScVal(Buffer.from(raw.replace(/^0x/, ""), "hex"), { type: "bytes" });
+  if (t === "void") return xdr.ScVal.scvVoid();
+
+  const generic = parseGeneric(specType);
+
+  // An absent Option is void; anything else is the inner type.
+  if (generic?.name === "option" && generic.args.length === 1) {
+    const trimmed = raw.trim();
+    if (trimmed === "" || trimmed.toLowerCase() === "null") return xdr.ScVal.scvVoid();
+    return coerceArgInput(raw, generic.args[0]);
+  }
+
+  if (generic?.name === "vec" && generic.args.length === 1) {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error(`${specType} expects a JSON array, e.g. ["a", "b"].`);
+    }
+    return xdr.ScVal.scvVec(
+      parsed.map((item) => coerceArgInput(elementInput(item), generic.args[0]))
+    );
+  }
+
+  if (generic?.name === "map" && generic.args.length === 2) {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`${specType} expects a JSON object, e.g. {"key": 1}.`);
+    }
+    const [keyType, valueType] = generic.args;
+    // Soroban requires map keys in canonical order; handing nativeToScVal a
+    // Map of already-typed ScVals lets the SDK do that sorting for us.
+    const entries = new Map<xdr.ScVal, xdr.ScVal>();
+    for (const [key, value] of Object.entries(parsed)) {
+      entries.set(coerceArgInput(key, keyType), coerceArgInput(elementInput(value), valueType));
+    }
+    return nativeToScVal(entries);
+  }
+
   try {
     return nativeToScVal(JSON.parse(raw));
   } catch {
