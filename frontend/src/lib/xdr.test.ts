@@ -23,7 +23,7 @@ import {
   base64FromQueryParam,
   type ParsedEventSpec,
 } from "./xdr";
-import { labelEventTopics, matchEventSpec } from "./event-spec";
+import { labelEventData, labelEventTopics, matchEventSpec } from "./event-spec";
 
 describe("decodeScVal / scValToDisplay", () => {
   it("decodes a u32", () => {
@@ -414,5 +414,85 @@ describe("base64FromQueryParam", () => {
 
   it("leaves the other base64 characters alone", () => {
     expect(base64FromQueryParam("a/b+c=")).toBe("a/b+c=");
+  });
+});
+
+describe("labelEventData", () => {
+  const mapSpec: ParsedEventSpec = {
+    name: "NoteWritten",
+    prefixTopics: ["note_written"],
+    params: [
+      { name: "name", type: "Symbol", location: "topic" },
+      { name: "revision", type: "U32", location: "data" },
+      { name: "author", type: "Address", location: "data" },
+    ],
+    dataFormat: "map",
+  };
+
+  const vecSpec: ParsedEventSpec = { ...mapSpec, dataFormat: "vec" };
+
+  const singleSpec: ParsedEventSpec = {
+    name: "Bumped",
+    prefixTopics: ["bumped"],
+    params: [{ name: "counter", type: "U32", location: "data" }],
+    dataFormat: "single-value",
+  };
+
+  it("labels a map payload by field name", () => {
+    expect(labelEventData('{"revision":2,"author":"GABC"}', mapSpec)).toEqual([
+      { name: "revision", type: "U32", value: "2" },
+      { name: "author", type: "Address", value: "GABC" },
+    ]);
+  });
+
+  it("labels a vec payload positionally, which is the only way to read one", () => {
+    expect(labelEventData('[2,"GABC"]', vecSpec)).toEqual([
+      { name: "revision", type: "U32", value: "2" },
+      { name: "author", type: "Address", value: "GABC" },
+    ]);
+  });
+
+  it("labels a single-value payload from the display string as-is", () => {
+    // scValToDisplay renders scalars bare, not JSON-quoted.
+    expect(labelEventData("7", singleSpec)).toEqual([
+      { name: "counter", type: "U32", value: "7" },
+    ]);
+  });
+
+  it("refuses a vec whose length disagrees with the declaration", () => {
+    expect(labelEventData("[2]", vecSpec)).toBeNull();
+    expect(labelEventData('[2,"GABC",99]', vecSpec)).toBeNull();
+  });
+
+  it("refuses a map missing a declared field rather than labelling a gap", () => {
+    expect(labelEventData('{"revision":2}', mapSpec)).toBeNull();
+  });
+
+  it("refuses a payload of the wrong shape for its format", () => {
+    expect(labelEventData('[2,"GABC"]', mapSpec)).toBeNull();
+    expect(labelEventData('{"revision":2,"author":"GABC"}', vecSpec)).toBeNull();
+  });
+
+  it("returns null for an unparsable payload", () => {
+    expect(labelEventData("not json", mapSpec)).toBeNull();
+  });
+
+  it("returns null when the event declares no data fields", () => {
+    const topicsOnly: ParsedEventSpec = {
+      ...mapSpec,
+      params: [{ name: "name", type: "Symbol", location: "topic" }],
+    };
+    expect(labelEventData("{}", topicsOnly)).toBeNull();
+  });
+
+  it("renders a nested value as JSON rather than [object Object]", () => {
+    const nested: ParsedEventSpec = {
+      ...singleSpec,
+      dataFormat: "map",
+      params: [{ name: "detail", type: "Map<Symbol, U32>", location: "data" }],
+    };
+    expect(labelEventData('{"detail":{"a":1}}', nested)).toEqual([
+      { name: "detail", type: "Map<Symbol, U32>", value: '{"a":1}' },
+    ]);
   });
 });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ContractEvent, ContractEventSpec } from "@/types";
 import { shortHash, timeAgo } from "@/lib/format";
-import { labelEventTopics, matchEventSpec } from "@/lib/event-spec";
+import { labelEventData, labelEventTopics, matchEventSpec } from "@/lib/event-spec";
 
 interface Props {
   events: ContractEvent[];
@@ -26,6 +26,9 @@ export default function EventLog({ events, specs = [] }: Props) {
         // the raw topic list rather than guessing at names.
         const spec = matchEventSpec(e.topic, specs);
         const labelled = spec ? labelEventTopics(e.topic, spec) : [];
+        // Null when the payload doesn't match what the declaration promises —
+        // better to show it raw than to attach the wrong name to a value.
+        const data = spec ? labelEventData(e.value, spec) : null;
 
         return (
           <div key={e.id} className="rounded-lg border border-prism-border bg-prism-surface p-4">
@@ -77,7 +80,21 @@ export default function EventLog({ events, specs = [] }: Props) {
               )
             )}
 
-            <p className="text-xs font-mono text-prism-muted break-all">{e.value}</p>
+            {data ? (
+              <dl className="space-y-0.5">
+                {data.map((field) => (
+                  <div key={field.name} className="flex gap-2 text-xs">
+                    <dt className="text-prism-muted shrink-0">
+                      {field.name}
+                      <span className="opacity-60"> ({field.type})</span>
+                    </dt>
+                    <dd className="font-mono text-white break-all">{field.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-xs font-mono text-prism-muted break-all">{e.value}</p>
+            )}
           </div>
         );
       })}
