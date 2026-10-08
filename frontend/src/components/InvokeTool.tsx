@@ -2,13 +2,19 @@
 
 import { useState, useTransition } from "react";
 import { simulateInvocationAction } from "@/lib/actions";
-import type { ContractFunctionSpec } from "@/types";
+import type { ContractFunctionSpec, ContractTypeDef } from "@/types";
+import { describeContractError } from "@/lib/contract-error";
 import type { SimulationResult } from "@/lib/soroban";
 import { formatNumber } from "@/lib/format";
 
-interface Props { contractId: string; functions: ContractFunctionSpec[] }
+interface Props {
+  contractId: string;
+  functions: ContractFunctionSpec[];
+  /** The contract's own types, used to name an error code it returns. */
+  types?: ContractTypeDef[];
+}
 
-export default function InvokeTool({ contractId, functions }: Props) {
+export default function InvokeTool({ contractId, functions, types = [] }: Props) {
   const [selected, setSelected] = useState(functions[0]?.name ?? "");
   const fn = functions.find((f) => f.name === selected);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -100,10 +106,29 @@ export default function InvokeTool({ contractId, functions }: Props) {
               )}
             </div>
           ) : (
-            <p className="text-prism-red break-all">{result.error}</p>
+            <ErrorReport message={result.error ?? "Simulation failed."} types={types} />
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A failed simulation, with the contract's own name for the error code when
+ * its ABI declares one — "Error(Contract, #3)" means nothing on its own.
+ */
+function ErrorReport({ message, types }: { message: string; types: ContractTypeDef[] }) {
+  const named = describeContractError(message, types);
+
+  return (
+    <div className="space-y-1">
+      {named && (
+        <p className="text-prism-red font-medium">
+          {named.name} <span className="opacity-70">(#{named.code})</span>
+        </p>
+      )}
+      <p className="text-prism-red break-all opacity-80">{message}</p>
     </div>
   );
 }

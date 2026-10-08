@@ -37,7 +37,7 @@ export default async function ContractPage({ params }: Props) {
         {wasm && wasm.functions.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-3">Invoke (simulate)</h2>
-            <InvokeTool contractId={contractId} functions={wasm.functions} />
+            <InvokeTool contractId={contractId} functions={wasm.functions} types={wasm.types} />
           </section>
         )}
 
