@@ -93,11 +93,20 @@ export interface ContractEventSpec {
   doc?: string;
 }
 
+/** A struct, union or enum the contract defines in its own spec. */
+export type ContractTypeDef =
+  | { kind: "struct"; name: string; doc?: string; fields: { name: string; type: string }[] }
+  | { kind: "union"; name: string; doc?: string; cases: { name: string; types: string[] }[] }
+  | { kind: "enum"; name: string; doc?: string; cases: { name: string; value: number }[] }
+  | { kind: "error"; name: string; doc?: string; cases: { name: string; value: number }[] };
+
 export interface ContractWasmInfo {
   size: number;
   functions: ContractFunctionSpec[];
   /** Empty for contracts that publish events as loose tuples rather than declaring them. */
   events: ContractEventSpec[];
+  /** The contract's own structs, unions and enums, named by its signatures. */
+  types: ContractTypeDef[];
 }
 
 /** A Soroban invocation decoded from a transaction's InvokeHostFunction operation. */

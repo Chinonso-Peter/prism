@@ -88,6 +88,37 @@ export default function ContractOverview({ info, wasm }: Props) {
           </div>
         </div>
       )}
+      {wasm && wasm.types.length > 0 && (
+        <div className="pt-2">
+          <p className="text-prism-muted text-sm mb-2">Types ({wasm.types.length})</p>
+          <div className="rounded-lg border border-prism-border overflow-x-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {wasm.types.map((def) => (
+                  <tr key={def.name} className="border-b border-prism-border last:border-0">
+                    <td
+                      className="px-3 py-2 font-mono text-prism-accent whitespace-nowrap align-top"
+                      title={def.doc}
+                    >
+                      {def.name}
+                      <span className="text-prism-muted opacity-60"> {def.kind}</span>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-prism-muted">
+                      {def.kind === "struct"
+                        ? `{ ${def.fields.map((f) => `${f.name}: ${f.type}`).join(", ")} }`
+                        : def.kind === "union"
+                          ? def.cases
+                              .map((c) => (c.types.length ? `${c.name}(${c.types.join(", ")})` : c.name))
+                              .join(" | ")
+                          : def.cases.map((c) => `${c.name} = ${c.value}`).join(", ")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {wasm && wasm.functions.length === 0 && (
         <p className="text-prism-muted text-xs pt-2">
           No embedded ABI found for this contract — not every contract includes one.

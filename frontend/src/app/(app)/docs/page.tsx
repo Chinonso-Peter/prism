@@ -19,7 +19,7 @@ const endpoints: Endpoint[] = [
     method: "GET",
     path: "/api/contract/:id/wasm",
     description:
-      "WASM bytecode size and a best-effort parsed ABI: function names, args and return types, plus any events the contract declares (name, topics, data fields).",
+      "WASM bytecode size and a best-effort parsed ABI: function names, args and return types, any events the contract declares (name, topics, data fields), and its own type definitions (structs, unions, enums).",
     example: "/api/contract/CDPUJYCTPGPEGS6MBXYLEWTYSGCPVKUHCURLF2ORT3RAVL5TF5JKIAI5/wasm",
     notes: "404s if the contract has no WASM (e.g. a Stellar Asset Contract).",
   },
