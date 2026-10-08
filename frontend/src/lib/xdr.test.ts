@@ -20,6 +20,7 @@ import {
   identifyXdr,
   decodeAnyXdr,
   parseContractEvents,
+  parseContractTypes,
   base64FromQueryParam,
   type ParsedEventSpec,
 } from "./xdr";
@@ -543,5 +544,110 @@ describe("coerceArgInput with compound types", () => {
 
   it("still falls back to JSON inference for a contract's own types", () => {
     expect(coerceArgInput('{"a":1}', "SomeUdtType").switch().name).toBe("scvMap");
+  });
+});
+
+describe("parseContractTypes", () => {
+  function structEntry() {
+    return xdr.ScSpecEntry.scSpecEntryUdtStructV0(
+      new xdr.ScSpecUdtStructV0({
+        doc: "A stored note.",
+        lib: "",
+        name: "Note",
+        fields: [
+          new xdr.ScSpecUdtStructFieldV0({
+            doc: "",
+            name: "author",
+            type: xdr.ScSpecTypeDef.scSpecTypeAddress(),
+          }),
+          new xdr.ScSpecUdtStructFieldV0({
+            doc: "",
+            name: "revision",
+            type: xdr.ScSpecTypeDef.scSpecTypeU32(),
+          }),
+        ],
+      })
+    );
+  }
+
+  function unionEntry() {
+    return xdr.ScSpecEntry.scSpecEntryUdtUnionV0(
+      new xdr.ScSpecUdtUnionV0({
+        doc: "",
+        lib: "",
+        name: "DataKey",
+        cases: [
+          xdr.ScSpecUdtUnionCaseV0.scSpecUdtUnionCaseVoidV0(
+            new xdr.ScSpecUdtUnionCaseVoidV0({ doc: "", name: "Admin" })
+          ),
+          xdr.ScSpecUdtUnionCaseV0.scSpecUdtUnionCaseTupleV0(
+            new xdr.ScSpecUdtUnionCaseTupleV0({
+              doc: "",
+              name: "Note",
+              type: [xdr.ScSpecTypeDef.scSpecTypeSymbol()],
+            })
+          ),
+        ],
+      })
+    );
+  }
+
+  function errorEnumEntry() {
+    return xdr.ScSpecEntry.scSpecEntryUdtErrorEnumV0(
+      new xdr.ScSpecUdtErrorEnumV0({
+        doc: "",
+        lib: "",
+        name: "Error",
+        cases: [
+          new xdr.ScSpecUdtErrorEnumCaseV0({ doc: "", name: "NotInitialized", value: 2 }),
+        ],
+      })
+    );
+  }
+
+  it("parses a struct's fields and types", () => {
+    const [def] = parseContractTypes(wasmWithSpec([structEntry()]));
+    expect(def).toEqual({
+      kind: "struct",
+      name: "Note",
+      doc: "A stored note.",
+      fields: [
+        { name: "author", type: "Address" },
+        { name: "revision", type: "U32" },
+      ],
+    });
+  });
+
+  it("parses both void and tuple union cases", () => {
+    const [def] = parseContractTypes(wasmWithSpec([unionEntry()]));
+    expect(def.kind).toBe("union");
+    expect(def).toMatchObject({
+      name: "DataKey",
+      cases: [
+        { name: "Admin", types: [] },
+        { name: "Note", types: ["Symbol"] },
+      ],
+    });
+  });
+
+  it("parses an error enum's discriminants", () => {
+    const [def] = parseContractTypes(wasmWithSpec([errorEnumEntry()]));
+    expect(def).toMatchObject({
+      kind: "error",
+      name: "Error",
+      cases: [{ name: "NotInitialized", value: 2 }],
+    });
+  });
+
+  it("reads type definitions alongside functions and events", () => {
+    const wasm = wasmWithSpec([structEntry(), noteWrittenEntry(), unionEntry()]);
+    expect(parseContractTypes(wasm).map((t) => t.name)).toEqual(["Note", "DataKey"]);
+    // The other parsers must ignore these entries rather than choke on them.
+    expect(parseContractEvents(wasm).map((e) => e.name)).toEqual(["NoteWritten"]);
+    expect(parseContractSpec(wasm)).toEqual([]);
+  });
+
+  it("returns an empty array for a contract with no spec", () => {
+    expect(parseContractTypes(Buffer.from("not wasm"))).toEqual([]);
   });
 });

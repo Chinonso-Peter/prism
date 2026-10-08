@@ -235,6 +235,96 @@ const EVENT_DATA_FORMATS: Record<string, ParsedEventSpec["dataFormat"]> = {
   scSpecEventDataFormatSingleValue: "single-value",
 };
 
+/** A type a contract defines in its own spec — the names that appear in its signatures. */
+export type ParsedTypeDef =
+  | { kind: "struct"; name: string; doc?: string; fields: { name: string; type: string }[] }
+  | { kind: "union"; name: string; doc?: string; cases: { name: string; types: string[] }[] }
+  | { kind: "enum"; name: string; doc?: string; cases: { name: string; value: number }[] }
+  | { kind: "error"; name: string; doc?: string; cases: { name: string; value: number }[] };
+
+/**
+ * Parse the structs, unions and enums a contract defines.
+ *
+ * Function signatures refer to these by bare name — a function returning
+ * `Result<Note>` says nothing about what a Note contains, and a storage key of
+ * type `DataKey` says nothing about its variants. The definitions are in the
+ * spec alongside the functions; Prism was reading past them.
+ *
+ * Soroban represents a Rust tuple struct as a struct whose fields are named
+ * "0", "1", ... — reported as-is, since that's what the contract's own ABI
+ * says and inventing names would be worse.
+ */
+export function parseContractTypes(wasm: Buffer): ParsedTypeDef[] {
+  const types: ParsedTypeDef[] = [];
+
+  for (const entry of readSpecEntries(wasm)) {
+    try {
+      switch (entry.switch().name) {
+        case "scSpecEntryUdtStructV0": {
+          const def = entry.udtStructV0();
+          types.push({
+            kind: "struct",
+            name: def.name().toString(),
+            doc: def.doc().toString() || undefined,
+            fields: def.fields().map((field) => ({
+              name: field.name().toString(),
+              type: specTypeToString(field.type()),
+            })),
+          });
+          break;
+        }
+        case "scSpecEntryUdtUnionV0": {
+          const def = entry.udtUnionV0();
+          types.push({
+            kind: "union",
+            name: def.name().toString(),
+            doc: def.doc().toString() || undefined,
+            cases: def.cases().map((unionCase) =>
+              unionCase.switch().name === "scSpecUdtUnionCaseTupleV0"
+                ? {
+                    name: unionCase.tupleCase().name().toString(),
+                    types: unionCase.tupleCase().type().map(specTypeToString),
+                  }
+                : { name: unionCase.voidCase().name().toString(), types: [] }
+            ),
+          });
+          break;
+        }
+        case "scSpecEntryUdtEnumV0": {
+          const def = entry.udtEnumV0();
+          types.push({
+            kind: "enum",
+            name: def.name().toString(),
+            doc: def.doc().toString() || undefined,
+            cases: def.cases().map((enumCase) => ({
+              name: enumCase.name().toString(),
+              value: enumCase.value(),
+            })),
+          });
+          break;
+        }
+        case "scSpecEntryUdtErrorEnumV0": {
+          const def = entry.udtErrorEnumV0();
+          types.push({
+            kind: "error",
+            name: def.name().toString(),
+            doc: def.doc().toString() || undefined,
+            cases: def.cases().map((errorCase) => ({
+              name: errorCase.name().toString(),
+              value: errorCase.value(),
+            })),
+          });
+          break;
+        }
+      }
+    } catch {
+      // A definition Prism can't read shouldn't cost us the ones it can.
+    }
+  }
+
+  return types;
+}
+
 /**
  * Parse the events a contract declares in its spec.
  *
