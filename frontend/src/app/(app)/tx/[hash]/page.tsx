@@ -3,7 +3,7 @@ import { xdr } from "@stellar/stellar-sdk";
 import { getTransaction, isNotFound } from "@/lib/horizon";
 import CopyButton from "@/components/CopyButton";
 import { getInvocationReturnValue } from "@/lib/soroban";
-import { decodeInvocation, getResourceUsage } from "@/lib/xdr";
+import { decodeInvocation, decodeTransactionFailure, getResourceUsage } from "@/lib/xdr";
 import { formatDate, formatFee, stroopsToXlm, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
 
@@ -31,6 +31,10 @@ export default async function TxPage({ params }: Props) {
     envelope = null;
   }
 
+  // Null for a successful transaction, so this also double-checks Horizon's
+  // own `successful` flag against what the result XDR actually says.
+  const failure = tx.successful ? null : decodeTransactionFailure(tx.resultXdr);
+
   const invocation = envelope ? decodeInvocation(envelope) : null;
   const resources = envelope ? getResourceUsage(envelope) : null;
   const returnValue = invocation ? await getInvocationReturnValue(tx.hash) : null;
@@ -52,6 +56,37 @@ export default async function TxPage({ params }: Props) {
         <Row label="Operations" value={String(tx.operationCount)} />
         {tx.memo && <Row label="Memo" value={tx.memo} />}
       </div>
+
+      {failure && (
+        <div className="mt-6 rounded-xl border border-prism-red/30 bg-prism-red/10 p-5">
+          <h2 className="text-sm font-semibold text-prism-red mb-1">
+            Failed: <span className="font-mono">{failure.resultCode}</span>
+          </h2>
+          {failure.operations.length === 0 ? (
+            <p className="text-xs text-prism-red/80">
+              This code applies to the transaction as a whole — it carries no per-operation results.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-prism-red/80 mb-3">
+                The ledger applies operations in order and then rolls the whole transaction back, so
+                operations marked ok ran but were discarded.
+              </p>
+              <ol className="space-y-1">
+                {failure.operations.map((op) => (
+                  <li key={op.index} className="flex gap-2 text-xs font-mono">
+                    <span className="text-prism-muted w-8 shrink-0">#{op.index}</span>
+                    <span className={op.failed ? "text-prism-red font-bold" : "text-prism-muted"}>
+                      {op.code}
+                    </span>
+                    {op.failed && <span className="text-prism-red">&larr; failed here</span>}
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+        </div>
+      )}
 
       {!envelope && (
         <div className="mt-6 rounded-xl border border-prism-red/30 bg-prism-red/10 p-4">
