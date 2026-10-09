@@ -22,6 +22,7 @@ import {
   parseContractEvents,
   parseContractTypes,
   base64FromQueryParam,
+  type ParsedTypeDef,
   type ParsedEventSpec,
 } from "./xdr";
 import { labelEventData, labelEventTopics, matchEventSpec } from "./event-spec";

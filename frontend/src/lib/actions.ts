@@ -8,7 +8,7 @@ import {
   type StorageKeyKind,
   type SimulationResult,
 } from "./soroban";
-import type { StorageEntry } from "@/types";
+import type { ContractTypeDef, StorageEntry } from "@/types";
 
 export async function lookupStorageKeyAction(
   contractId: string,
@@ -45,10 +45,15 @@ export async function decodeXdrAction(input: string): Promise<XdrDecodeResult | 
 export async function simulateInvocationAction(
   contractId: string,
   functionName: string,
-  args: { value: string; type: string }[]
+  args: { value: string; type: string }[],
+  // The contract's own type definitions, forwarded from the page that already
+  // parsed them rather than re-fetching the WASM on every simulation. They
+  // only shape argument encoding for a read-only simulation, so the worst a
+  // wrong one can do is produce a call the contract rejects.
+  types: ContractTypeDef[] = []
 ): Promise<SimulationResult> {
   try {
-    const scArgs = args.map((a) => coerceArgInput(a.value, a.type));
+    const scArgs = args.map((a) => coerceArgInput(a.value, a.type, types));
     return await simulateInvocation(contractId, functionName, scArgs);
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Invalid arguments." };

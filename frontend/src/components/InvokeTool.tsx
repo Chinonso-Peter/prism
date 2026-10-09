@@ -32,7 +32,7 @@ export default function InvokeTool({ contractId, functions, types = [] }: Props)
     if (!fn) return;
     const args = fn.inputs.map((input) => ({ value: values[input.name] ?? "", type: input.type }));
     startTransition(async () => {
-      const res = await simulateInvocationAction(contractId, fn.name, args);
+      const res = await simulateInvocationAction(contractId, fn.name, args, types);
       setResult(res);
     });
   }
@@ -67,7 +67,7 @@ export default function InvokeTool({ contractId, functions, types = [] }: Props)
                   value={values[input.name] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [input.name]: e.target.value }))}
                   className="flex-1 bg-prism-bg border border-prism-border rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-prism-accent"
-                  placeholder={input.type}
+                  placeholder={placeholderFor(input.type, types)}
                 />
               </div>
             ))}
@@ -131,4 +131,36 @@ function ErrorReport({ message, types }: { message: string; types: ContractTypeD
       <p className="text-prism-red break-all opacity-80">{message}</p>
     </div>
   );
+}
+
+/**
+ * Show the shape an argument wants, not just its type name. A reader faced
+ * with "DataKey" has no way to guess that a payload-free variant is typed as a
+ * bare name while one with a payload needs {"Note": [...]}.
+ */
+function placeholderFor(type: string, types: ContractTypeDef[]): string {
+  const generic = /^(Vec|Map|Option)<(.+)>$/.exec(type.trim());
+  if (generic) {
+    if (generic[1] === "Vec") return `["…"] — JSON array of ${generic[2]}`;
+    if (generic[1] === "Map") return `{"key": "value"} — JSON object`;
+    return `${generic[2]} — or leave empty for none`;
+  }
+
+  const def = types.find((d) => d.name === type.trim());
+  if (!def) return type;
+
+  if (def.kind === "struct") {
+    return def.fields.every((f) => /^\d+$/.test(f.name))
+      ? `[${def.fields.map((f) => f.type).join(", ")}] — JSON array`
+      : `{${def.fields.map((f) => `"${f.name}": …`).join(", ")}}`;
+  }
+  if (def.kind === "union") {
+    const withPayload = def.cases.find((c) => c.types.length > 0);
+    const bare = def.cases.find((c) => c.types.length === 0);
+    return withPayload
+      ? `${bare ? `${bare.name} or ` : ""}{"${withPayload.name}": [...]}`
+      : def.cases.map((c) => c.name).join(" | ");
+  }
+  if (def.kind === "enum") return def.cases.map((c) => c.name).join(" | ");
+  return type;
 }
