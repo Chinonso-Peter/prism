@@ -62,6 +62,7 @@ interface HorizonTransaction {
   successful: boolean;
   memo?: string | null;
   envelope_xdr: string;
+  result_xdr: string;
 }
 
 interface HorizonBalance {
@@ -201,5 +202,6 @@ function mapTransaction(r: HorizonTransaction): TransactionRecord {
     successful: r.successful,
     memo: r.memo ?? undefined,
     envelopeXdr: r.envelope_xdr,
+    resultXdr: r.result_xdr,
   };
 }

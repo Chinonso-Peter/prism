@@ -19,6 +19,8 @@ export interface TransactionRecord {
   successful: boolean;
   memo?: string;
   envelopeXdr: string;
+  /** Horizon's result XDR, which carries why a failed transaction failed. */
+  resultXdr: string;
 }
 
 export interface AccountBalance {
