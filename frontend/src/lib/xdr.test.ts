@@ -651,3 +651,111 @@ describe("parseContractTypes", () => {
     expect(parseContractTypes(Buffer.from("not wasm"))).toEqual([]);
   });
 });
+
+describe("coerceArgInput with the contract's own types", () => {
+  const types: ParsedTypeDef[] = [
+    {
+      kind: "struct",
+      name: "Note",
+      fields: [
+        { name: "author", type: "Address" },
+        { name: "revision", type: "U32" },
+      ],
+    },
+    {
+      kind: "struct",
+      name: "Pair",
+      fields: [
+        { name: "0", type: "Symbol" },
+        { name: "1", type: "U32" },
+      ],
+    },
+    {
+      kind: "union",
+      name: "DataKey",
+      cases: [
+        { name: "Admin", types: [] },
+        { name: "Note", types: ["Symbol"] },
+      ],
+    },
+    {
+      kind: "enum",
+      name: "Level",
+      cases: [
+        { name: "Low", value: 1 },
+        { name: "High", value: 9 },
+      ],
+    },
+    { kind: "error", name: "Error", cases: [{ name: "NoSuchNote", value: 4 }] },
+  ];
+
+  const address = Keypair.random().publicKey();
+
+  it("encodes a named struct as a map of field-name symbols", () => {
+    const value = coerceArgInput(`{"author":"${address}","revision":2}`, "Note", types);
+    expect(value.switch().name).toBe("scvMap");
+    const entries = value.map()!;
+    expect(entries.map((e) => e.key().sym().toString())).toEqual(["author", "revision"]);
+    // Field types come from the declaration, not from JSON inference.
+    expect(entries[0].val().switch().name).toBe("scvAddress");
+    expect(entries[1].val().switch().name).toBe("scvU32");
+  });
+
+  it("encodes a tuple struct as a vec, not a map keyed by \"0\"", () => {
+    const value = coerceArgInput('["a",7]', "Pair", types);
+    expect(value.switch().name).toBe("scvVec");
+    expect(value.vec()!.map((v) => v.switch().name)).toEqual(["scvSymbol", "scvU32"]);
+  });
+
+  it("encodes a payload-free union case from its bare name", () => {
+    const value = coerceArgInput("Admin", "DataKey", types);
+    expect(value.switch().name).toBe("scvVec");
+    expect(value.vec()!).toHaveLength(1);
+    expect(value.vec()![0].sym().toString()).toBe("Admin");
+  });
+
+  it("encodes a union case with a payload, typing the payload from the declaration", () => {
+    const value = coerceArgInput('{"Note":["hello"]}', "DataKey", types);
+    const vec = value.vec()!;
+    expect(vec[0].sym().toString()).toBe("Note");
+    expect(vec[1].switch().name).toBe("scvSymbol");
+    expect(vec[1].sym().toString()).toBe("hello");
+  });
+
+  it("accepts a single payload value without an array wrapper", () => {
+    expect(coerceArgInput('{"Note":"hello"}', "DataKey", types).vec()![1].sym().toString()).toBe(
+      "hello"
+    );
+  });
+
+  it("encodes a u32 enum by case name or discriminant", () => {
+    expect(coerceArgInput("High", "Level", types).u32()).toBe(9);
+    expect(coerceArgInput("9", "Level", types).u32()).toBe(9);
+  });
+
+  it("recurses so a struct can hold the contract's other types", () => {
+    const nested: ParsedTypeDef[] = [
+      ...types,
+      { kind: "struct", name: "Wrapper", fields: [{ name: "level", type: "Level" }] },
+    ];
+    const value = coerceArgInput('{"level":"Low"}', "Wrapper", nested);
+    expect(value.map()![0].val().u32()).toBe(1);
+  });
+
+  it("says what it wanted when the input doesn't fit the declaration", () => {
+    expect(() => coerceArgInput('{"author":"G"}', "Note", types)).toThrow(/missing field\(s\): revision/);
+    expect(() => coerceArgInput("Nope", "Level", types)).toThrow(/no case Nope/);
+    expect(() => coerceArgInput('{"Ghost":[]}', "DataKey", types)).toThrow(/no case Ghost/);
+    expect(() => coerceArgInput("Note", "DataKey", types)).toThrow(/takes 1 value/);
+    expect(() => coerceArgInput('{"Note":["a","b"]}', "DataKey", types)).toThrow(/got 2/);
+    expect(() => coerceArgInput('["a",7]', "Note", types)).toThrow(/expects a JSON object/);
+  });
+
+  it("refuses an error type as an argument", () => {
+    expect(() => coerceArgInput("NoSuchNote", "Error", types)).toThrow(/can't be passed as an argument/);
+  });
+
+  it("still falls back to JSON inference when no definitions are supplied", () => {
+    expect(coerceArgInput('{"a":1}', "Note").switch().name).toBe("scvMap");
+  });
+});
