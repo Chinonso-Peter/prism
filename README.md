@@ -91,6 +91,41 @@ docker compose up
 
 This runs Postgres, the indexer (`indexer/`), and the frontend together — see [Architecture](#architecture) above for what running the indexer actually buys you.
 
+### Rate limits and reverse proxies
+
+Every `/api/*` route is rate-limited per client: 30 requests per minute, except `/api/contract/[id]/simulate` at 10 per minute. Each route keeps its own counter, so hitting the limit on one route doesn't block the others. Over the limit, the API returns `429` with a `Retry-After` header (in seconds).
+
+**How a client is identified.** Prism has no trusted-proxy setting. It takes the **first (leftmost) entry of the `X-Forwarded-For` header** as the client's address, and uses nothing else, not even the socket address. This has three consequences:
+
+- A request with no `X-Forwarded-For` header is counted as the client `unknown`. Every such request shares one counter, so if nothing sets the header, everyone hits the limit together.
+- Prism trusts whatever the header says. If clients can reach Prism directly, or through a proxy that *appends* to the header instead of replacing it, they can put any address first and get around the limit.
+- The limiter keeps its counters in memory, one set per process. They're lost on restart, and with N replicas a client effectively gets N times the limit.
+
+**Proxy configuration.** Put Prism behind a reverse proxy that **overwrites** `X-Forwarded-For` with the real client address, and make sure the proxy is the only way to reach Prism. For example, bind port 3000 to localhost or an internal network instead of publishing it.
+
+nginx — set the header to the peer address instead of using `$proxy_add_x_forwarded_for`, which appends:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Caddy — `reverse_proxy` only keeps incoming `X-Forwarded-For` values from addresses listed in `trusted_proxies`. With none listed, which is the default, it replaces the header with the peer address:
+
+```caddy
+explorer.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+With more than one proxy, such as a CDN or load balancer in front of nginx, the outermost hop has to set the header and every inner hop has to pass it on without appending. With nginx, use `real_ip_header X-Forwarded-For` and `set_real_ip_from <upstream range>` so that `$remote_addr` becomes the original client, then set the header to it as shown above. Cloudflare provides the client address in `CF-Connecting-IP`. Behind Cloudflare, use `proxy_set_header X-Forwarded-For $http_cf_connecting_ip;`, but only if Prism's origin accepts traffic from Cloudflare alone.
+
+To check the setup, send about 35 requests in a minute to a read route from one machine, for example `curl -s -o /dev/null -w '%{http_code}\n' https://explorer.example.com/api/ledger/1`. From around the 31st request you should get `429`. A second machine should still get `200` during that time. If the second machine also gets `429`, every client is sharing one counter: the header isn't reaching Prism, or it holds the proxy's own address.
+
 ---
 
 ## Roadmap
