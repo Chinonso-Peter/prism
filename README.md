@@ -29,7 +29,7 @@ When a developer deploys a Soroban contract, they need to inspect its storage st
 - Failed transaction debugging with error messages
 
 ### Ledger & Network
-- Real-time ledger streaming
+- Auto-refreshing ledger overview (polls every 6 seconds — no streaming connection)
 - Network statistics (TPS, ledger close time, active contracts)
 - Search by transaction hash, contract ID, account address, or ledger sequence
 
@@ -95,7 +95,7 @@ This runs Postgres, the indexer (`indexer/`), and the frontend together — see 
 
 ## Roadmap
 
-- [x] Ledger overview and real-time streaming
+- [x] Ledger overview with auto-refreshing updates
 - [x] Transaction explorer with Soroban decoding
 - [x] Contract storage inspector
 - [x] Contract invocation history and event log

@@ -12,14 +12,60 @@ Thank you for helping build better Stellar tooling!
 ## Areas to Contribute
 
 - New explorer views (contract state, event logs, storage)
-- Indexer improvements in `src/indexer/`
+- Indexer improvements in `indexer/src/`
 - UI components and design
 - RPC integration and data parsing
 - Tests and documentation
 
+## Project Structure
+
+| Directory     | Description                          |
+| ------------- | ------------------------------------ |
+| `frontend/`   | Next.js explorer UI                  |
+| `indexer/`    | Event indexer (TypeScript + Prisma)  |
+| `contracts/`  | Soroban smart contracts (Rust)       |
+
+## Commands
+
+### Frontend (`frontend/`)
+
+```bash
+cd frontend
+npm install
+npm run dev        # Start dev server
+npm run lint       # Run linter
+npm run test       # Run tests
+npm run build      # Production build
+```
+
+### Indexer (`indexer/`)
+
+```bash
+cd indexer
+npm install
+npm run dev             # Start indexer in watch mode
+npm run test            # Run tests
+npm run prisma:generate # Generate Prisma client
+npm run prisma:migrate  # Run database migrations
+npm run build           # Compile TypeScript
+npm run start           # Run compiled output
+```
+
+### Contracts (`contracts/`)
+
+```bash
+cd contracts
+cargo build         # Build contracts
+cargo test          # Run contract tests
+```
+
 ## Code Style
 
-Run `npm run lint` before submitting.
+Run the linter before submitting:
+
+```bash
+cd frontend && npm run lint
+```
 
 ## Issues
 
