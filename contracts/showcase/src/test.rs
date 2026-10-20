@@ -194,6 +194,27 @@ fn revisions_reports_known_notes_and_skips_unknown_ones() {
 }
 
 #[test]
+fn collections_are_stored_as_persistent_vec_and_map_entries() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let values = vec![&env, 7i128, 11i128, 13i128];
+    let mut labels = Map::new(&env);
+    labels.set(
+        Symbol::new(&env, "purpose"),
+        String::from_str(&env, "showcase"),
+    );
+
+    client.store_collections(&values, &labels);
+
+    assert_eq!(client.stored_values(), values);
+    assert_eq!(client.stored_labels(), labels);
+    env.as_contract(&client.address, || {
+        assert!(env.storage().persistent().has(&DataKey::Values));
+        assert!(env.storage().persistent().has(&DataKey::Labels));
+    });
+}
+
+#[test]
 fn sessions_expire_on_their_own() {
     let env = Env::default();
     let (client, _) = setup(&env);
@@ -303,6 +324,35 @@ fn an_event_with_no_indexed_fields_carries_only_its_name_topic() {
     client.bump(&3);
 
     let expected = Bumped { counter: 3 }.to_xdr(&env, &client.address);
+    let emitted = env.events().all();
+    assert_eq!(emitted.events().iter().rev().nth(1), Some(&expected));
+}
+
+#[test]
+fn vec_format_event_matches_its_declared_type() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+    let values = vec![&env, 2i128, 4i128, 8i128];
+
+    assert_eq!(client.tally(&values), 14);
+
+    let expected = AmountsTallied {
+        count: 3,
+        total: 14,
+    }
+    .to_xdr(&env, &client.address);
+    let emitted = env.events().all();
+    assert_eq!(emitted.events().last(), Some(&expected));
+}
+
+#[test]
+fn single_value_event_matches_its_declared_type() {
+    let env = Env::default();
+    let (client, _) = setup(&env);
+
+    assert_eq!(client.bump(&42), 42);
+
+    let expected = CounterValue { counter: 42 }.to_xdr(&env, &client.address);
     let emitted = env.events().all();
     assert_eq!(emitted.events().last(), Some(&expected));
 }
