@@ -69,3 +69,15 @@ jobs:
       # The wasm build is the one that has to succeed for a deploy, and it uses
       # a different target and profile than the tests above.
       - run: cargo build --release --target wasm32v1-none
+
+  docker:
+    name: Docker Images & Compose Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Validates docker-compose.yml and its variable interpolation without
+      # starting any containers.
+      - run: docker compose config --quiet
+      # A broken Dockerfile should fail the pull request, not the release.
+      - run: docker build --tag prism-frontend:ci frontend
+      - run: docker build --tag prism-indexer:ci indexer
