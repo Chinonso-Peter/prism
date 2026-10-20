@@ -1,0 +1,44 @@
+version: 2
+
+# Weekly update pull requests, one per ecosystem and directory. Each group
+# bundles all of that directory's updates into a single pull request.
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-npm:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /indexer
+    schedule:
+      interval: weekly
+    groups:
+      indexer-npm:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /contracts
+    schedule:
+      interval: weekly
+    groups:
+      contracts-cargo:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-docker:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /indexer
+    schedule:
+      interval: weekly
+    groups:
+      indexer-docker:
+        patterns: ["*"]
