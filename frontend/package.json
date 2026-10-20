@@ -9,6 +9,9 @@
     "lint": "next lint",
     "test": "vitest run"
   },
+  "engines": {
+    "node": ">=20 <21"
+  },
   "keywords": [
     "stellar",
     "soroban",
