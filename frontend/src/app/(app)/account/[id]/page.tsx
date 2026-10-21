@@ -1,6 +1,6 @@
 import { getAccount, isNotFound } from "@/lib/horizon";
 import CopyButton from "@/components/CopyButton";
-import { formatNumber, shortHash } from "@/lib/format";
+import { balanceLabel, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -58,11 +58,7 @@ export default async function AccountPage({ params }: Props) {
           <tbody>
             {account.balances.map((b, i) => (
               <tr key={i} className="border-b border-prism-border last:border-0">
-                <td className="px-4 py-3 font-mono text-xs">
-                  {b.assetType === "native"
-                    ? "XLM"
-                    : `${b.assetCode}:${b.assetIssuer ? shortHash(b.assetIssuer, 4) : ""}`}
-                </td>
+                <td className="px-4 py-3 font-mono text-xs">{balanceLabel(b)}</td>
                 <td className="px-4 py-3 text-right font-mono text-xs">{b.balance}</td>
               </tr>
             ))}

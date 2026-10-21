@@ -27,6 +27,8 @@ export interface AccountBalance {
   assetType: string;
   assetCode?: string;
   assetIssuer?: string;
+  /** Set only for liquidity pool shares, which have no asset code. */
+  liquidityPoolId?: string;
   balance: string;
 }
 

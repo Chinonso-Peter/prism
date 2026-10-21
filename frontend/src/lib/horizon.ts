@@ -69,6 +69,7 @@ interface HorizonBalance {
   asset_type: string;
   asset_code?: string;
   asset_issuer?: string;
+  liquidity_pool_id?: string;
   balance: string;
 }
 
@@ -185,6 +186,7 @@ function mapAccount(r: HorizonAccount): AccountRecord {
       assetType: b.asset_type,
       assetCode: b.asset_code,
       assetIssuer: b.asset_issuer,
+      liquidityPoolId: b.liquidity_pool_id,
       balance: b.balance,
     })),
     signerCount: r.signers?.length ?? 0,
