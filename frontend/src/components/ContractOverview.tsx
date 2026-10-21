@@ -70,11 +70,11 @@ export default function ContractOverview({ info, wasm }: Props) {
                         {event.name}
                       </td>
                       <td className="px-3 py-2 font-mono text-prism-muted">
-                        <span className="text-white">topics</span> [{topics.join(", ")}]
+                        <span className="text-prism-strong">topics</span> [{topics.join(", ")}]
                         {data.length > 0 && (
                           <>
                             {" "}
-                            <span className="text-white">data</span>
+                            <span className="text-prism-strong">data</span>
                             <span className="opacity-60"> ({event.dataFormat})</span> [
                             {data.join(", ")}]
                           </>

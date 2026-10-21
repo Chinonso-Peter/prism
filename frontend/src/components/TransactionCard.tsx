@@ -14,7 +14,7 @@ export default function TransactionCard({ tx }: Props) {
         <span className={`text-xs font-semibold px-2 py-1 rounded ${tx.successful ? "bg-green-900 text-prism-green" : "bg-red-900 text-prism-red"}`}>
           {tx.successful ? "SUCCESS" : "FAILED"}
         </span>
-        <span className="font-mono text-sm text-white">{shortHash(tx.hash)}</span>
+        <span className="font-mono text-sm text-prism-strong">{shortHash(tx.hash)}</span>
       </div>
       <div className="flex items-center gap-6 text-sm text-prism-muted">
         <span>{tx.operationCount} op{tx.operationCount !== 1 ? "s" : ""}</span>

@@ -14,6 +14,7 @@ const config: Config = {
           surface: "rgb(var(--prism-surface) / <alpha-value>)",
           border: "rgb(var(--prism-border) / <alpha-value>)",
           text: "rgb(var(--prism-text) / <alpha-value>)",
+          strong: "rgb(var(--prism-strong) / <alpha-value>)",
           accent: "rgb(var(--prism-accent) / <alpha-value>)",
           green: "rgb(var(--prism-green) / <alpha-value>)",
           red: "rgb(var(--prism-red) / <alpha-value>)",
