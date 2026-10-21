@@ -120,6 +120,17 @@ describe("coerceArgInput", () => {
       'Map<Symbol, U32> expects a JSON object, e.g. {"key": 1}.'
     );
   });
+
+  it("converts hex bytes with or without a 0x prefix", () => {
+    expect(coerceArgInput("0xabcd", "Bytes").bytes().toString("hex")).toBe("abcd");
+    expect(coerceArgInput("ABCD", "Bytes").bytes().toString("hex")).toBe("abcd");
+  });
+
+  it("rejects bytes that are not whole hex pairs instead of silently truncating them", () => {
+    expect(() => coerceArgInput("zz", "Bytes")).toThrow('"zz" is not valid hex.');
+    expect(() => coerceArgInput("ab_cd", "Bytes")).toThrow('"ab_cd" is not valid hex.');
+    expect(() => coerceArgInput("abc", "Bytes")).toThrow('"abc" is not valid hex.');
+  });
 });
 
 describe("parseContractSpec", () => {

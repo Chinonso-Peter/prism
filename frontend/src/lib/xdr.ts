@@ -88,7 +88,17 @@ export function coerceArgInput(
     }
     return nativeToScVal(address, { type: "address" });
   }
-  if (t === "bytes") return nativeToScVal(Buffer.from(raw.replace(/^0x/, ""), "hex"), { type: "bytes" });
+  if (t === "bytes") {
+    // Node's hex decoder stops at the first bad character without an error, so
+    // "zz" would quietly become an empty buffer. Check the digits first.
+    const hex = raw.trim().replace(/^0x/, "");
+    if (!/^([0-9a-fA-F]{2})*$/.test(hex)) {
+      throw new Error(
+        `"${raw.trim()}" is not valid hex. Bytes take an even number of hex digits, optionally prefixed with 0x.`
+      );
+    }
+    return nativeToScVal(Buffer.from(hex, "hex"), { type: "bytes" });
+  }
   if (t === "void") return xdr.ScVal.scvVoid();
 
   const generic = parseGeneric(specType);
