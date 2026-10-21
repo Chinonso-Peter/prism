@@ -29,6 +29,18 @@ function parseGeneric(specType: string): { name: string; args: string[] } | null
   return { name: match[1].toLowerCase(), args: splitTypeArgs(match[2]) };
 }
 
+/**
+ * Parse a Vec or Map argument's JSON. A malformed value is reported with the
+ * type and the shape it should take, not as the parser's bare SyntaxError.
+ */
+function parseJsonArg(raw: string, specType: string, shape: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`${specType} expects ${shape}.`);
+  }
+}
+
 /** Feed a JSON element back through the string-based coercion. */
 function elementInput(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -63,7 +75,19 @@ export function coerceArgInput(
   if (t === "i128") return nativeToScVal(BigInt(raw), { type: "i128" });
   if (t === "symbol") return nativeToScVal(raw, { type: "symbol" });
   if (t === "string") return nativeToScVal(raw, { type: "string" });
-  if (t === "address") return nativeToScVal(raw, { type: "address" });
+  if (t === "address") {
+    // Checked here rather than left to the SDK, whose error for a mistyped
+    // address says nothing about what went wrong.
+    const address = raw.trim();
+    if (
+      !StrKey.isValidEd25519PublicKey(address) &&
+      !StrKey.isValidMed25519PublicKey(address) &&
+      !StrKey.isValidContract(address)
+    ) {
+      throw new Error(`"${address}" is not a valid account or contract address.`);
+    }
+    return nativeToScVal(address, { type: "address" });
+  }
   if (t === "bytes") return nativeToScVal(Buffer.from(raw.replace(/^0x/, ""), "hex"), { type: "bytes" });
   if (t === "void") return xdr.ScVal.scvVoid();
 
@@ -77,7 +101,7 @@ export function coerceArgInput(
   }
 
   if (generic?.name === "vec" && generic.args.length === 1) {
-    const parsed = JSON.parse(raw);
+    const parsed = parseJsonArg(raw, specType, 'a JSON array, e.g. ["a", "b"]');
     if (!Array.isArray(parsed)) {
       throw new Error(`${specType} expects a JSON array, e.g. ["a", "b"].`);
     }
@@ -87,7 +111,7 @@ export function coerceArgInput(
   }
 
   if (generic?.name === "map" && generic.args.length === 2) {
-    const parsed = JSON.parse(raw);
+    const parsed = parseJsonArg(raw, specType, 'a JSON object, e.g. {"key": 1}');
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error(`${specType} expects a JSON object, e.g. {"key": 1}.`);
     }
@@ -722,43 +746,55 @@ export interface TransactionFailure {
 }
 
 /**
+ * What Horizon's result XDR says about a transaction's outcome.
+ *
+ * `undecodable` is kept apart from `succeeded` so a page can tell the reader
+ * that a failure exists even when its reason can't be read.
+ */
+export type TransactionFailureResult =
+  | { status: "succeeded" }
+  | { status: "failed"; failure: TransactionFailure }
+  | { status: "undecodable" };
+
+/**
  * Decode why a transaction failed from Horizon's result XDR.
  *
- * Returns null for a successful transaction, and for anything that won't
- * parse. Note that a failed transaction's operations are not all failures: the
+ * Note that a failed transaction's operations are not all failures: the
  * ledger applies them in order and rolls the lot back, so earlier operations
  * commonly report success alongside the one that actually broke — which is why
  * each operation is reported with its own verdict rather than collapsed into a
  * single message.
  */
-export function decodeTransactionFailure(resultXdrBase64: string): TransactionFailure | null {
+export function decodeTransactionFailure(resultXdrBase64: string): TransactionFailureResult {
+  let result: xdr.TransactionResult;
   try {
-    const result = xdr.TransactionResult.fromXDR(normalizeBase64(resultXdrBase64), "base64");
-    const resultCode = result.result().switch().name;
-    if (resultCode === "txSuccess") return null;
-
-    let operations: TransactionFailure["operations"] = [];
-    try {
-      operations = (result.result().results() ?? []).map((op, index) => {
-        // An opInner result nests the operation's own result union; the generic
-        // value() accessor reaches it without switching on every op type.
-        const code =
-          op.switch().name === "opInner"
-            ? (op.tr() as unknown as { value(): { switch(): { name: string } } })
-                .value()
-                .switch()
-                .name
-            : op.switch().name;
-        return { index, code, failed: !/Success$/.test(code) };
-      });
-    } catch {
-      // Codes like txBadSeq carry no per-operation results.
-    }
-
-    return { resultCode, operations };
+    result = xdr.TransactionResult.fromXDR(normalizeBase64(resultXdrBase64), "base64");
   } catch {
-    return null;
+    return { status: "undecodable" };
   }
+
+  const resultCode = result.result().switch().name;
+  if (resultCode === "txSuccess") return { status: "succeeded" };
+
+  let operations: TransactionFailure["operations"] = [];
+  try {
+    operations = (result.result().results() ?? []).map((op, index) => {
+      // An opInner result nests the operation's own result union; the generic
+      // value() accessor reaches it without switching on every op type.
+      const code =
+        op.switch().name === "opInner"
+          ? (op.tr() as unknown as { value(): { switch(): { name: string } } })
+              .value()
+              .switch()
+              .name
+          : op.switch().name;
+      return { index, code, failed: !/Success$/.test(code) };
+    });
+  } catch {
+    // Codes like txBadSeq carry no per-operation results.
+  }
+
+  return { status: "failed", failure: { resultCode, operations } };
 }
 
 function transactionResultFields(result: xdr.TransactionResult): XdrField[] {

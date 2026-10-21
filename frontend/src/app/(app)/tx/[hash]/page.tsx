@@ -33,7 +33,9 @@ export default async function TxPage({ params }: Props) {
 
   // Null for a successful transaction, so this also double-checks Horizon's
   // own `successful` flag against what the result XDR actually says.
-  const failure = tx.successful ? null : decodeTransactionFailure(tx.resultXdr);
+  const outcome = tx.successful ? null : decodeTransactionFailure(tx.resultXdr);
+  const failure = outcome?.status === "failed" ? outcome.failure : null;
+  const failureUndecodable = outcome?.status === "undecodable";
 
   const invocation = envelope ? decodeInvocation(envelope) : null;
   const resources = envelope ? getResourceUsage(envelope) : null;
@@ -85,6 +87,21 @@ export default async function TxPage({ params }: Props) {
               </ol>
             </>
           )}
+        </div>
+      )}
+
+      {failureUndecodable && (
+        <div className="mt-6 rounded-xl border border-prism-red/30 bg-prism-red/10 p-4">
+          <p className="text-xs text-prism-red">
+            Prism couldn&apos;t decode the failure reason for this transaction. The raw result can
+            still be inspected in the XDR decoder.
+          </p>
+          <Link
+            href={`/xdr?input=${encodeURIComponent(tx.resultXdr)}`}
+            className="text-xs text-prism-accent hover:underline mt-2 inline-block"
+          >
+            Inspect the raw result in the XDR decoder &rarr;
+          </Link>
         </div>
       )}
 
