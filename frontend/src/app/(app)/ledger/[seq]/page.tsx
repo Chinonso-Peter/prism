@@ -1,4 +1,5 @@
-import { getLedger, isNotFound } from "@/lib/horizon";
+import Link from "next/link";
+import { getLatestLedger, getLedger, isNotFound } from "@/lib/horizon";
 import { formatDate, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
 
@@ -18,10 +19,33 @@ export default async function LedgerPage({ params }: Props) {
     throw err;
   }
 
+  // Without a latest ledger we can't tell whether this one is the newest, so
+  // leave "next" out rather than link to a ledger that may not exist yet.
+  const latest = await getLatestLedger().catch(() => null);
+  const prevSeq = seq > 1 ? seq - 1 : null;
+  const nextSeq = latest && seq < latest.sequence ? seq + 1 : null;
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">Ledger</h1>
-      <p className="text-prism-muted font-mono text-sm mb-8">#{ledger.sequence}</p>
+      <p className="text-prism-muted font-mono text-sm mb-4">#{ledger.sequence}</p>
+
+      <nav aria-label="Ledger navigation" className="flex justify-between text-sm mb-8">
+        <span>
+          {prevSeq !== null && (
+            <Link href={`/ledger/${prevSeq}`} className="text-prism-accent hover:underline">
+              &larr; Ledger #{prevSeq}
+            </Link>
+          )}
+        </span>
+        <span>
+          {nextSeq !== null && (
+            <Link href={`/ledger/${nextSeq}`} className="text-prism-accent hover:underline">
+              Ledger #{nextSeq} &rarr;
+            </Link>
+          )}
+        </span>
+      </nav>
 
       <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
         <Row label="Hash"           value={ledger.hash} mono />
