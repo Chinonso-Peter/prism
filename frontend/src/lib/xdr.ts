@@ -46,6 +46,47 @@ function elementInput(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
+interface IntegerBounds {
+  min: bigint;
+  max: bigint;
+}
+
+function unsignedBounds(bits: number): IntegerBounds {
+  return { min: BigInt(0), max: BigInt(2) ** BigInt(bits) - BigInt(1) };
+}
+
+function signedBounds(bits: number): IntegerBounds {
+  const half = BigInt(2) ** BigInt(bits - 1);
+  return { min: -half, max: half - BigInt(1) };
+}
+
+/** The inclusive range each integer argument type can hold. */
+const INTEGER_BOUNDS = {
+  u32: unsignedBounds(32),
+  i32: signedBounds(32),
+  u64: unsignedBounds(64),
+  i64: signedBounds(64),
+  u128: unsignedBounds(128),
+  i128: signedBounds(128),
+};
+
+/**
+ * Read a whole-number argument and check it fits its type. Number and BigInt
+ * accept more than that: "1.5" and "1e3" parse, and so does a value the type
+ * can't hold, which the SDK then rejects or wraps.
+ */
+function parseInteger(raw: string, specType: string, bounds: IntegerBounds): bigint {
+  const digits = raw.trim();
+  const pattern = bounds.min < BigInt(0) ? /^-?\d+$/ : /^\d+$/;
+  const value = pattern.test(digits) ? BigInt(digits) : null;
+  if (value === null || value < bounds.min || value > bounds.max) {
+    throw new Error(
+      `"${digits}" is not a valid ${specType}. ${specType} takes a whole number from ${bounds.min} to ${bounds.max}.`
+    );
+  }
+  return value;
+}
+
 /**
  * Coerce a plain-text form input into an ScVal for a given spec type name
  * (as produced by parseContractSpec, e.g. "U32", "Address", "Vec<Symbol>").
@@ -67,12 +108,12 @@ export function coerceArgInput(
 ): xdr.ScVal {
   const t = specType.toLowerCase();
   if (t === "bool") return nativeToScVal(raw.trim().toLowerCase() === "true");
-  if (t === "u32") return nativeToScVal(Number(raw), { type: "u32" });
-  if (t === "i32") return nativeToScVal(Number(raw), { type: "i32" });
-  if (t === "u64") return nativeToScVal(BigInt(raw), { type: "u64" });
-  if (t === "i64") return nativeToScVal(BigInt(raw), { type: "i64" });
-  if (t === "u128") return nativeToScVal(BigInt(raw), { type: "u128" });
-  if (t === "i128") return nativeToScVal(BigInt(raw), { type: "i128" });
+  if (t === "u32") return nativeToScVal(Number(parseInteger(raw, specType, INTEGER_BOUNDS.u32)), { type: "u32" });
+  if (t === "i32") return nativeToScVal(Number(parseInteger(raw, specType, INTEGER_BOUNDS.i32)), { type: "i32" });
+  if (t === "u64") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.u64), { type: "u64" });
+  if (t === "i64") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.i64), { type: "i64" });
+  if (t === "u128") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.u128), { type: "u128" });
+  if (t === "i128") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.i128), { type: "i128" });
   if (t === "symbol") return nativeToScVal(raw, { type: "symbol" });
   if (t === "string") return nativeToScVal(raw, { type: "string" });
   if (t === "address") {
