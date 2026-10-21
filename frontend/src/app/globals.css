@@ -2,17 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Colour tokens hold RGB channels rather than hex values, so Tailwind's opacity
+ * modifiers (bg-prism-red/10) still work through rgb(var(--prism-*) / alpha).
+ */
 :root {
-  --bg: #080B10;
-  --surface: #0F1420;
-  --border: #1E2535;
-  --accent: #4F8EF7;
-  --muted: #6B7280;
+  --prism-bg: 8 11 16;
+  --prism-surface: 15 20 32;
+  --prism-border: 30 37 53;
+  --prism-text: 229 231 235;
+  --prism-accent: 79 142 247;
+  --prism-green: 34 197 94;
+  --prism-red: 239 68 68;
+  --prism-muted: 107 114 128;
 }
 
 body {
-  background: var(--bg);
-  color: #E5E7EB;
+  background: rgb(var(--prism-bg));
+  color: rgb(var(--prism-text));
   font-family: "Inter", sans-serif;
 }
 

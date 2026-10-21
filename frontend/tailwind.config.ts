@@ -10,13 +10,14 @@ const config: Config = {
     extend: {
       colors: {
         prism: {
-          bg: "#080B10",
-          surface: "#0F1420",
-          border: "#1E2535",
-          accent: "#4F8EF7",
-          green: "#22C55E",
-          red: "#EF4444",
-          muted: "#6B7280",
+          bg: "rgb(var(--prism-bg) / <alpha-value>)",
+          surface: "rgb(var(--prism-surface) / <alpha-value>)",
+          border: "rgb(var(--prism-border) / <alpha-value>)",
+          text: "rgb(var(--prism-text) / <alpha-value>)",
+          accent: "rgb(var(--prism-accent) / <alpha-value>)",
+          green: "rgb(var(--prism-green) / <alpha-value>)",
+          red: "rgb(var(--prism-red) / <alpha-value>)",
+          muted: "rgb(var(--prism-muted) / <alpha-value>)",
         },
       },
       fontFamily: {
