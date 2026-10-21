@@ -2,10 +2,32 @@ import { getAccount, isNotFound } from "@/lib/horizon";
 import CopyButton from "@/components/CopyButton";
 import { balanceLabel, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 
 interface Props { params: { id: string } }
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const title = `Account ${shortHash(params.id, 6)}`;
+  try {
+    const account = await getAccount(params.id);
+    const xlm = account.balances.find((b) => b.assetType === "native");
+    const description = xlm
+      ? `Stellar account ${params.id} — ${xlm.balance} XLM, ${account.subentryCount} subentries, ${account.signerCount} signers.`
+      : `Stellar account ${params.id} — ${account.subentryCount} subentries, ${account.signerCount} signers.`;
+    return {
+      title,
+      description,
+      openGraph: { title, description },
+    };
+  } catch {
+    return {
+      title,
+      description: `Stellar account ${params.id}.`,
+    };
+  }
+}
 
 export default async function AccountPage({ params }: Props) {
   let account;
@@ -18,6 +40,7 @@ export default async function AccountPage({ params }: Props) {
     if (isNotFound(err)) notFound();
     throw err;
   }
+
 
   const flagLabels = [
     account.flags.authRequired && "auth required",
