@@ -75,7 +75,19 @@ export function coerceArgInput(
   if (t === "i128") return nativeToScVal(BigInt(raw), { type: "i128" });
   if (t === "symbol") return nativeToScVal(raw, { type: "symbol" });
   if (t === "string") return nativeToScVal(raw, { type: "string" });
-  if (t === "address") return nativeToScVal(raw, { type: "address" });
+  if (t === "address") {
+    // Checked here rather than left to the SDK, whose error for a mistyped
+    // address says nothing about what went wrong.
+    const address = raw.trim();
+    if (
+      !StrKey.isValidEd25519PublicKey(address) &&
+      !StrKey.isValidMed25519PublicKey(address) &&
+      !StrKey.isValidContract(address)
+    ) {
+      throw new Error(`"${address}" is not a valid account or contract address.`);
+    }
+    return nativeToScVal(address, { type: "address" });
+  }
   if (t === "bytes") return nativeToScVal(Buffer.from(raw.replace(/^0x/, ""), "hex"), { type: "bytes" });
   if (t === "void") return xdr.ScVal.scvVoid();
 

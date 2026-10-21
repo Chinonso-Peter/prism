@@ -85,6 +85,24 @@ describe("coerceArgInput", () => {
     expect(Address.fromScAddress(scval.address()).toString()).toBe(address);
   });
 
+  it("accepts a contract address", () => {
+    const contract = StrKey.encodeContract(Buffer.alloc(32, 1));
+    expect(Address.fromScAddress(coerceArgInput(contract, "Address").address()).toString()).toBe(
+      contract
+    );
+  });
+
+  it("rejects a mistyped address with a message that names the problem", () => {
+    const valid = Keypair.random().publicKey();
+    const typo = valid.slice(0, -1) + (valid.endsWith("A") ? "B" : "A");
+    expect(() => coerceArgInput(typo, "Address")).toThrow(
+      `"${typo}" is not a valid account or contract address.`
+    );
+    expect(() => coerceArgInput("hello", "Address")).toThrow(
+      "is not a valid account or contract address"
+    );
+  });
+
   it("falls back to best-effort JSON parsing for unknown/compound types", () => {
     const scval = coerceArgInput('{"a":1}', "SomeUdtType");
     expect(scval.switch().name).toBe("scvMap");
