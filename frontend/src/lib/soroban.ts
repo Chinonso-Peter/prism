@@ -206,25 +206,31 @@ export async function getInvocationHistory(contractId: string, limit = 20): Prom
   const events = await getContractEventsFromRpc(contractId, 200);
   const txHashes = Array.from(new Set(events.map((e) => e.txHash))).slice(0, limit);
 
-  const items = await Promise.all(
-    txHashes.map(async (txHash): Promise<InvocationHistoryItem | null> => {
-      try {
-        const res = await server().getTransaction(txHash);
-        if (res.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return null;
-        const invocation = decodeInvocation(res.envelopeXdr);
-        return {
-          txHash,
-          ledger: res.ledger,
-          timestamp: new Date(res.createdAt * 1000).toISOString(),
-          functionName: invocation?.functionName,
-          args: invocation?.args,
-          successful: res.status === rpc.Api.GetTransactionStatus.SUCCESS,
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
+  const CONCURRENCY = 4;
+  const items: (InvocationHistoryItem | null)[] = [];
+  for (let i = 0; i < txHashes.length; i += CONCURRENCY) {
+    const batch = txHashes.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (txHash): Promise<InvocationHistoryItem | null> => {
+        try {
+          const res = await server().getTransaction(txHash);
+          if (res.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return null;
+          const invocation = decodeInvocation(res.envelopeXdr);
+          return {
+            txHash,
+            ledger: res.ledger,
+            timestamp: new Date(res.createdAt * 1000).toISOString(),
+            functionName: invocation?.functionName,
+            args: invocation?.args,
+            successful: res.status === rpc.Api.GetTransactionStatus.SUCCESS,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    items.push(...results);
+  }
 
   return items
     .filter((i): i is InvocationHistoryItem => i !== null)

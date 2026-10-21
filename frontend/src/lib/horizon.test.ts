@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 
 function mockFetchOnce(body: unknown, ok = true) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -144,6 +144,65 @@ describe("getTransaction", () => {
     mockFetchOnce({ ...transaction, memo: "hello" });
     const { getTransaction } = await import("./horizon");
     expect((await getTransaction("deadbeef")).memo).toBe("hello");
+  });
+});
+
+describe("getLedger (issue #35 — finalized cache)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sequence: 1000,
+        hash: "abc",
+        closed_at: "2026-08-10T00:00:00Z",
+        operation_count: 5,
+        base_fee_in_stroops: 100,
+        successful_transaction_count: 3,
+        failed_transaction_count: 1,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("uses a longer revalidate window for a finalized ledger", async () => {
+    const { getLedger } = await import("./horizon");
+    await getLedger(1000);
+    const options = fetchMock.mock.calls[0][1] as RequestInit & { next?: { revalidate?: number } };
+    expect(options.next?.revalidate).toBeGreaterThan(10);
+  });
+});
+
+describe("getTransaction (issue #35 — finalized cache)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        hash: "deadbeef",
+        ledger: 4671563,
+        created_at: "2026-09-14T10:23:22Z",
+        source_account: "GCLWKHHH",
+        fee_charged: "100",
+        operation_count: 1,
+        successful: true,
+        memo: null,
+        envelope_xdr: "AAAAAg==",
+        result_xdr: "AAAAAg==",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("uses a longer revalidate window for a closed transaction", async () => {
+    const { getTransaction } = await import("./horizon");
+    await getTransaction("deadbeef");
+    const options = fetchMock.mock.calls[0][1] as RequestInit & { next?: { revalidate?: number } };
+    expect(options.next?.revalidate).toBeGreaterThan(10);
   });
 });
 
