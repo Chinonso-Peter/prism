@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { TransactionRecord } from "@/types";
-import { shortHash, timeAgo, formatFee } from "@/lib/format";
+import { shortHash, formatFee } from "@/lib/format";
+import RelativeTime from "@/components/RelativeTime";
 
 interface Props { tx: TransactionRecord }
 
@@ -19,7 +20,9 @@ export default function TransactionCard({ tx }: Props) {
       <div className="flex items-center gap-6 text-sm text-prism-muted">
         <span>{tx.operationCount} op{tx.operationCount !== 1 ? "s" : ""}</span>
         <span>{formatFee(tx.fee)}</span>
-        <span>{timeAgo(tx.createdAt)}</span>
+        <span>
+          <RelativeTime iso={tx.createdAt} />
+        </span>
       </div>
     </Link>
   );

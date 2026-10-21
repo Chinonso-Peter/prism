@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shortHash, stroopsToXlm, formatFee, formatNumber, timeAgo, formatContractId } from "./format";
+import { shortHash, stroopsToXlm, formatFee, formatNumber, timeAgo, formatContractId, formatTimestampUtc } from "./format";
 
 describe("shortHash", () => {
   it("truncates long hashes with an ellipsis", () => {
@@ -64,5 +64,11 @@ describe("timeAgo", () => {
   it("reports days for older timestamps", () => {
     const now = new Date();
     expect(timeAgo(new Date(now.getTime() - 2 * 86_400_000).toISOString())).toBe("2d ago");
+  });
+});
+
+describe("formatTimestampUtc", () => {
+  it("labels the time in UTC, whatever the machine's time zone", () => {
+    expect(formatTimestampUtc("2026-10-21T10:30:00Z")).toMatch(/^Oct 21, 2026, 10:30\sAM UTC$/);
   });
 });

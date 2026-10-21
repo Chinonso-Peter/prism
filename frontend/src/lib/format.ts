@@ -24,6 +24,20 @@ export function formatDate(iso: string): string {
   });
 }
 
+/**
+ * Format an ISO timestamp as an absolute UTC label. Unlike formatDate, the
+ * output doesn't depend on the machine's time zone or locale, so the server
+ * and the browser render the same text.
+ */
+export function formatTimestampUtc(iso: string): string {
+  const label = new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  });
+  return `${label} UTC`;
+}
+
 /** Format a number with thousands separators */
 export function formatNumber(n: number): string {
   return n.toLocaleString();

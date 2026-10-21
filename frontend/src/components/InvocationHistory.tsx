@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { InvocationHistoryItem } from "@/types";
-import { shortHash, timeAgo } from "@/lib/format";
+import { shortHash } from "@/lib/format";
 import EmptyState from "@/components/EmptyState";
+import RelativeTime from "@/components/RelativeTime";
 
 interface Props { items: InvocationHistoryItem[] }
 
@@ -36,7 +37,9 @@ export default function InvocationHistory({ items }: Props) {
               {shortHash(item.txHash)}
             </span>
           </div>
-          <span className="text-prism-muted text-xs shrink-0">{timeAgo(item.timestamp)}</span>
+          <span className="text-prism-muted text-xs shrink-0">
+            <RelativeTime iso={item.timestamp} />
+          </span>
         </Link>
       ))}
     </div>
