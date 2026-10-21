@@ -2,6 +2,7 @@ import SearchBar from "@/components/SearchBar";
 import LedgerStats from "@/components/LedgerStats";
 import TransactionCard from "@/components/TransactionCard";
 import AutoRefresh from "@/components/AutoRefresh";
+import EmptyState from "@/components/EmptyState";
 import { getLatestLedger, getRecentTransactions } from "@/lib/horizon";
 import type { TransactionRecord } from "@/types";
 
@@ -43,7 +44,7 @@ export default async function Home() {
           </span>
         </h2>
         {transactions.length === 0 ? (
-          <p className="text-prism-muted text-sm">Connecting to Stellar network…</p>
+          <EmptyState>Connecting to Stellar network…</EmptyState>
         ) : (
           <div className="space-y-2">
             {transactions.map((tx) => (

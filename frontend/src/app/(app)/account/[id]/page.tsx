@@ -35,15 +35,15 @@ export default async function AccountPage({ params }: Props) {
       </div>
 
       <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4 mb-8">
-        <Row label="Sequence" value={account.sequence} mono />
-        <Row label="Subentries" value={String(account.subentryCount)} />
-        <Row label="Signers" value={String(account.signerCount)} />
-        <Row label="Last Modified Ledger" value={`#${formatNumber(account.lastModifiedLedger)}`} />
-        <Row
+        <DetailRow label="Sequence" value={account.sequence} mono />
+        <DetailRow label="Subentries" value={String(account.subentryCount)} />
+        <DetailRow label="Signers" value={String(account.signerCount)} />
+        <DetailRow label="Last Modified Ledger" value={`#${formatNumber(account.lastModifiedLedger)}`} />
+        <DetailRow
           label="Thresholds"
           value={`low ${account.thresholds.low} / med ${account.thresholds.med} / high ${account.thresholds.high}`}
         />
-        <Row label="Flags" value={flagLabels.length > 0 ? flagLabels.join(", ") : "none"} />
+        <DetailRow label="Flags" value={flagLabels.length > 0 ? flagLabels.join(", ") : "none"} />
       </div>
 
       <h2 className="text-lg font-semibold mb-3">Balances</h2>
@@ -65,15 +65,6 @@ export default async function AccountPage({ params }: Props) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex justify-between border-b border-prism-border pb-3 last:border-0 last:pb-0 gap-4">
-      <span className="text-prism-muted text-sm shrink-0">{label}</span>
-      <span className={`text-sm text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }

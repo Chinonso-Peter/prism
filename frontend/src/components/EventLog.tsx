@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ContractEvent, ContractEventSpec } from "@/types";
-import { shortHash, timeAgo } from "@/lib/format";
+import { shortHash } from "@/lib/format";
 import { labelEventData, labelEventTopics, matchEventSpec } from "@/lib/event-spec";
+import RelativeTime from "@/components/RelativeTime";
+import EmptyState from "@/components/EmptyState";
 
 interface Props {
   events: ContractEvent[];
@@ -12,9 +14,9 @@ interface Props {
 export default function EventLog({ events, specs = [] }: Props) {
   if (events.length === 0) {
     return (
-      <p className="text-prism-muted text-sm">
+      <EmptyState>
         No events emitted by this contract in the last ~24h (the RPC node&apos;s retention window).
-      </p>
+      </EmptyState>
     );
   }
 
@@ -54,7 +56,9 @@ export default function EventLog({ events, specs = [] }: Props) {
                 >
                   {shortHash(e.txHash, 4)}
                 </Link>
-                <span className="text-xs text-prism-muted">{timeAgo(e.timestamp)}</span>
+                <span className="text-xs text-prism-muted">
+                  <RelativeTime iso={e.timestamp} />
+                </span>
               </div>
             </div>
 

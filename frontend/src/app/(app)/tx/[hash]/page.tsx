@@ -6,6 +6,7 @@ import { getInvocationReturnValue } from "@/lib/soroban";
 import { decodeInvocations, decodeTransactionFailure, getResourceUsage } from "@/lib/xdr";
 import { formatDate, formatFee, stroopsToXlm, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
+import DetailRow from "@/components/DetailRow";
 
 export const dynamic = "force-dynamic";
 
@@ -50,13 +51,13 @@ export default async function TxPage({ params }: Props) {
       </div>
 
       <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
-        <Row label="Status" value={tx.successful ? "✓ Success" : "✗ Failed"} />
-        <Row label="Ledger" value={String(tx.ledger)} />
-        <Row label="Timestamp" value={formatDate(tx.createdAt)} />
-        <Row label="Source" value={tx.sourceAccount} mono />
-        <Row label="Fee" value={`${formatFee(tx.fee)} (${stroopsToXlm(tx.fee)})`} />
-        <Row label="Operations" value={String(tx.operationCount)} />
-        {tx.memo && <Row label="Memo" value={tx.memo} />}
+        <DetailRow label="Status" value={tx.successful ? "✓ Success" : "✗ Failed"} />
+        <DetailRow label="Ledger" value={String(tx.ledger)} />
+        <DetailRow label="Timestamp" value={formatDate(tx.createdAt)} />
+        <DetailRow label="Source" value={tx.sourceAccount} mono />
+        <DetailRow label="Fee" value={`${formatFee(tx.fee)} (${stroopsToXlm(tx.fee)})`} />
+        <DetailRow label="Operations" value={String(tx.operationCount)} />
+        {tx.memo && <DetailRow label="Memo" value={tx.memo} />}
       </div>
 
       {failure && (
@@ -148,32 +149,14 @@ export default async function TxPage({ params }: Props) {
           {i === 0 && returnValue !== null && <Row label="Return Value" value={returnValue} mono />}
           {i === 0 && resources && (
             <>
-              <Row label="CPU Instructions" value={formatNumber(resources.instructions)} />
-              <Row label="Read Bytes" value={formatNumber(resources.readBytes)} />
-              <Row label="Write Bytes" value={formatNumber(resources.writeBytes)} />
-              <Row label="Resource Fee" value={`${resources.resourceFeeStroops} stroops`} />
+              <DetailRow label="CPU Instructions" value={formatNumber(resources.instructions)} />
+              <DetailRow label="Read Bytes" value={formatNumber(resources.readBytes)} />
+              <DetailRow label="Write Bytes" value={formatNumber(resources.writeBytes)} />
+              <DetailRow label="Resource Fee" value={`${resources.resourceFeeStroops} stroops`} />
             </>
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-function Row({ label, value, mono, link }: { label: string; value: string; mono?: boolean; link?: string }) {
-  return (
-    <div className="flex justify-between border-b border-prism-border pb-3 last:border-0 last:pb-0 gap-4">
-      <span className="text-prism-muted text-sm shrink-0">{label}</span>
-      {link ? (
-        <Link
-          href={link}
-          className={`text-sm text-right break-all text-prism-accent hover:underline ${mono ? "font-mono" : ""}`}
-        >
-          {value}
-        </Link>
-      ) : (
-        <span className={`text-sm text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
-      )}
     </div>
   );
 }

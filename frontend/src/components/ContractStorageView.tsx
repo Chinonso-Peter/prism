@@ -37,7 +37,7 @@ export default function ContractStorageView({ contractId, instanceStorage, fullS
           </div>
         </div>
       ) : instanceStorage.length === 0 ? (
-        <p className="text-prism-muted text-sm">No instance storage entries found for this contract.</p>
+        <EmptyState>No instance storage entries found for this contract.</EmptyState>
       ) : (
         <div className="rounded-xl border border-prism-border overflow-hidden">
           <table className="w-full text-sm">
