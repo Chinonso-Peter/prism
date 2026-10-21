@@ -146,3 +146,27 @@ describe("getTransaction", () => {
     expect((await getTransaction("deadbeef")).memo).toBe("hello");
   });
 });
+
+describe("getAccount", () => {
+  const account = {
+    account_id: "GCLWKHHH",
+    sequence: "1234",
+    subentry_count: 0,
+    last_modified_ledger: 4671563,
+    thresholds: { low_threshold: 0, med_threshold: 0, high_threshold: 0 },
+    flags: { auth_required: false, auth_revocable: false, auth_immutable: false, auth_clawback_enabled: false },
+    balances: [],
+  };
+
+  it("keeps the pool ID on liquidity pool share balances, which have no asset code", async () => {
+    const poolId = "dd7b1ab831c273310ddbec6f97870aa83c2fbd78ce22aded37ecbf4f3380fac7";
+    mockFetchOnce({
+      ...account,
+      balances: [{ asset_type: "liquidity_pool_shares", liquidity_pool_id: poolId, balance: "5.0000000" }],
+    });
+    const { getAccount } = await import("./horizon");
+    const [balance] = (await getAccount("GCLWKHHH")).balances;
+    expect(balance.liquidityPoolId).toBe(poolId);
+    expect(balance.assetCode).toBeUndefined();
+  });
+});

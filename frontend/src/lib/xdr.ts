@@ -1,7 +1,7 @@
 // XDR / ScVal decoding utilities for Prism, built on @stellar/stellar-sdk.
 import { Address, StrKey, xdr, scValToNative, nativeToScVal } from "@stellar/stellar-sdk";
 import { XdrReader } from "@stellar/js-xdr";
-import type { ResourceUsage, SorobanInvocation } from "@/types";
+import type { OperationInvocation, ResourceUsage, SorobanInvocation } from "@/types";
 
 /** Split a generic's argument list on top-level commas, respecting nesting. */
 function splitTypeArgs(inner: string): string[] {
@@ -46,6 +46,47 @@ function elementInput(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
+interface IntegerBounds {
+  min: bigint;
+  max: bigint;
+}
+
+function unsignedBounds(bits: number): IntegerBounds {
+  return { min: BigInt(0), max: BigInt(2) ** BigInt(bits) - BigInt(1) };
+}
+
+function signedBounds(bits: number): IntegerBounds {
+  const half = BigInt(2) ** BigInt(bits - 1);
+  return { min: -half, max: half - BigInt(1) };
+}
+
+/** The inclusive range each integer argument type can hold. */
+const INTEGER_BOUNDS = {
+  u32: unsignedBounds(32),
+  i32: signedBounds(32),
+  u64: unsignedBounds(64),
+  i64: signedBounds(64),
+  u128: unsignedBounds(128),
+  i128: signedBounds(128),
+};
+
+/**
+ * Read a whole-number argument and check it fits its type. Number and BigInt
+ * accept more than that: "1.5" and "1e3" parse, and so does a value the type
+ * can't hold, which the SDK then rejects or wraps.
+ */
+function parseInteger(raw: string, specType: string, bounds: IntegerBounds): bigint {
+  const digits = raw.trim();
+  const pattern = bounds.min < BigInt(0) ? /^-?\d+$/ : /^\d+$/;
+  const value = pattern.test(digits) ? BigInt(digits) : null;
+  if (value === null || value < bounds.min || value > bounds.max) {
+    throw new Error(
+      `"${digits}" is not a valid ${specType}. ${specType} takes a whole number from ${bounds.min} to ${bounds.max}.`
+    );
+  }
+  return value;
+}
+
 /**
  * Coerce a plain-text form input into an ScVal for a given spec type name
  * (as produced by parseContractSpec, e.g. "U32", "Address", "Vec<Symbol>").
@@ -67,12 +108,12 @@ export function coerceArgInput(
 ): xdr.ScVal {
   const t = specType.toLowerCase();
   if (t === "bool") return nativeToScVal(raw.trim().toLowerCase() === "true");
-  if (t === "u32") return nativeToScVal(Number(raw), { type: "u32" });
-  if (t === "i32") return nativeToScVal(Number(raw), { type: "i32" });
-  if (t === "u64") return nativeToScVal(BigInt(raw), { type: "u64" });
-  if (t === "i64") return nativeToScVal(BigInt(raw), { type: "i64" });
-  if (t === "u128") return nativeToScVal(BigInt(raw), { type: "u128" });
-  if (t === "i128") return nativeToScVal(BigInt(raw), { type: "i128" });
+  if (t === "u32") return nativeToScVal(Number(parseInteger(raw, specType, INTEGER_BOUNDS.u32)), { type: "u32" });
+  if (t === "i32") return nativeToScVal(Number(parseInteger(raw, specType, INTEGER_BOUNDS.i32)), { type: "i32" });
+  if (t === "u64") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.u64), { type: "u64" });
+  if (t === "i64") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.i64), { type: "i64" });
+  if (t === "u128") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.u128), { type: "u128" });
+  if (t === "i128") return nativeToScVal(parseInteger(raw, specType, INTEGER_BOUNDS.i128), { type: "i128" });
   if (t === "symbol") return nativeToScVal(raw, { type: "symbol" });
   if (t === "string") return nativeToScVal(raw, { type: "string" });
   if (t === "address") {
@@ -88,7 +129,17 @@ export function coerceArgInput(
     }
     return nativeToScVal(address, { type: "address" });
   }
-  if (t === "bytes") return nativeToScVal(Buffer.from(raw.replace(/^0x/, ""), "hex"), { type: "bytes" });
+  if (t === "bytes") {
+    // Node's hex decoder stops at the first bad character without an error, so
+    // "zz" would quietly become an empty buffer. Check the digits first.
+    const hex = raw.trim().replace(/^0x/, "");
+    if (!/^([0-9a-fA-F]{2})*$/.test(hex)) {
+      throw new Error(
+        `"${raw.trim()}" is not valid hex. Bytes take an even number of hex digits, optionally prefixed with 0x.`
+      );
+    }
+    return nativeToScVal(Buffer.from(hex, "hex"), { type: "bytes" });
+  }
   if (t === "void") return xdr.ScVal.scvVoid();
 
   const generic = parseGeneric(specType);
@@ -541,26 +592,37 @@ function v1Tx(envelope: xdr.TransactionEnvelope): xdr.Transaction | null {
   return null;
 }
 
-/** Decode a transaction envelope's InvokeHostFunction operation (function name + args), if any. */
-export function decodeInvocation(envelope: xdr.TransactionEnvelope): SorobanInvocation | null {
+/**
+ * Decode every InvokeHostFunction contract call in a transaction envelope, in
+ * operation order. A transaction can call several contracts, so each call is
+ * tagged with the index of the operation it came from.
+ */
+export function decodeInvocations(envelope: xdr.TransactionEnvelope): OperationInvocation[] {
   try {
     const tx = v1Tx(envelope);
-    if (!tx) return null;
-    for (const op of tx.operations()) {
-      if (op.body().switch().name !== "invokeHostFunction") continue;
+    if (!tx) return [];
+    const invocations: OperationInvocation[] = [];
+    tx.operations().forEach((op, operationIndex) => {
+      if (op.body().switch().name !== "invokeHostFunction") return;
       const hostFn = op.body().invokeHostFunctionOp().hostFunction();
-      if (hostFn.switch().name !== "hostFunctionTypeInvokeContract") continue;
+      if (hostFn.switch().name !== "hostFunctionTypeInvokeContract") return;
       const invoke = hostFn.invokeContract();
-      return {
+      invocations.push({
+        operationIndex,
         contractId: Address.fromScAddress(invoke.contractAddress()).toString(),
         functionName: invoke.functionName().toString(),
         args: invoke.args().map(scValToDisplay),
-      };
-    }
-    return null;
+      });
+    });
+    return invocations;
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** Decode a transaction envelope's first InvokeHostFunction contract call (function name + args), if any. */
+export function decodeInvocation(envelope: xdr.TransactionEnvelope): SorobanInvocation | null {
+  return decodeInvocations(envelope)[0] ?? null;
 }
 
 /** Decode a transaction envelope's Soroban resource footprint (instructions, I/O bytes, resource fee), if any. */

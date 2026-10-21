@@ -37,7 +37,7 @@ export default function Error({
         </button>
         <Link
           href="/explorer"
-          className="border border-prism-border px-4 py-2 rounded-lg text-xs font-medium text-prism-muted hover:text-white transition"
+          className="border border-prism-border px-4 py-2 rounded-lg text-xs font-medium text-prism-muted hover:text-prism-strong transition"
         >
           Back to the explorer
         </Link>
