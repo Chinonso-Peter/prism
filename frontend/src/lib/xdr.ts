@@ -29,6 +29,18 @@ function parseGeneric(specType: string): { name: string; args: string[] } | null
   return { name: match[1].toLowerCase(), args: splitTypeArgs(match[2]) };
 }
 
+/**
+ * Parse a Vec or Map argument's JSON. A malformed value is reported with the
+ * type and the shape it should take, not as the parser's bare SyntaxError.
+ */
+function parseJsonArg(raw: string, specType: string, shape: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`${specType} expects ${shape}.`);
+  }
+}
+
 /** Feed a JSON element back through the string-based coercion. */
 function elementInput(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -77,7 +89,7 @@ export function coerceArgInput(
   }
 
   if (generic?.name === "vec" && generic.args.length === 1) {
-    const parsed = JSON.parse(raw);
+    const parsed = parseJsonArg(raw, specType, 'a JSON array, e.g. ["a", "b"]');
     if (!Array.isArray(parsed)) {
       throw new Error(`${specType} expects a JSON array, e.g. ["a", "b"].`);
     }
@@ -87,7 +99,7 @@ export function coerceArgInput(
   }
 
   if (generic?.name === "map" && generic.args.length === 2) {
-    const parsed = JSON.parse(raw);
+    const parsed = parseJsonArg(raw, specType, 'a JSON object, e.g. {"key": 1}');
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error(`${specType} expects a JSON object, e.g. {"key": 1}.`);
     }

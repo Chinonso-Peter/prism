@@ -89,6 +89,18 @@ describe("coerceArgInput", () => {
     const scval = coerceArgInput('{"a":1}', "SomeUdtType");
     expect(scval.switch().name).toBe("scvMap");
   });
+
+  it("says what shape a malformed Vec should take instead of a bare SyntaxError", () => {
+    expect(() => coerceArgInput("[a, b", "Vec<Symbol>")).toThrow(
+      'Vec<Symbol> expects a JSON array, e.g. ["a", "b"].'
+    );
+  });
+
+  it("says what shape a malformed Map should take instead of a bare SyntaxError", () => {
+    expect(() => coerceArgInput("{key: 1", "Map<Symbol, U32>")).toThrow(
+      'Map<Symbol, U32> expects a JSON object, e.g. {"key": 1}.'
+    );
+  });
 });
 
 describe("parseContractSpec", () => {
