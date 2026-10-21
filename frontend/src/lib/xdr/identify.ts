@@ -29,6 +29,11 @@ export interface XdrField {
 export interface XdrDecodeResult {
   type: XdrTypeName;
   fields: XdrField[];
+  /**
+   * True when the blob is a recognized type but its contents couldn't be
+   * summarized, so `fields` is empty and the reader should be told so.
+   */
+  partial: boolean;
 }
 
 /**
@@ -44,7 +49,7 @@ export function base64FromQueryParam(raw: string): string {
 }
 
 /** Strip whitespace/newlines that survive a copy-paste out of a terminal or JSON blob. */
-function normalizeBase64(input: string): string {
+export function normalizeBase64(input: string): string {
   return input.replace(/\s+/g, "");
 }
 
@@ -261,6 +266,25 @@ function scValFields(value: xdr.ScVal): XdrField[] {
   ];
 }
 
+function summarize(type: XdrTypeName, base64: string): XdrField[] {
+  switch (type) {
+    case "TransactionEnvelope":
+      return transactionEnvelopeFields(xdr.TransactionEnvelope.fromXDR(base64, "base64"));
+    case "TransactionResult":
+      return transactionResultFields(xdr.TransactionResult.fromXDR(base64, "base64"));
+    case "TransactionMeta":
+      return transactionMetaFields(xdr.TransactionMeta.fromXDR(base64, "base64"));
+    case "LedgerEntry":
+      return ledgerEntryFields(xdr.LedgerEntry.fromXDR(base64, "base64"));
+    case "LedgerKey":
+      return ledgerKeyFields(xdr.LedgerKey.fromXDR(base64, "base64"));
+    case "ScSpecEntry":
+      return specEntryFields(xdr.ScSpecEntry.fromXDR(base64, "base64"));
+    case "ScVal":
+      return scValFields(xdr.ScVal.fromXDR(base64, "base64"));
+  }
+}
+
 /**
  * Decode an arbitrary base64 XDR blob into a labelled, human-readable summary.
  * Returns null when the input isn't valid XDR of any type Prism understands.
@@ -274,25 +298,10 @@ export function decodeAnyXdr(input: string): XdrDecodeResult | null {
 
   const base64 = normalizeBase64(input);
   try {
-    switch (type) {
-      case "TransactionEnvelope":
-        return { type, fields: transactionEnvelopeFields(xdr.TransactionEnvelope.fromXDR(base64, "base64")) };
-      case "TransactionResult":
-        return { type, fields: transactionResultFields(xdr.TransactionResult.fromXDR(base64, "base64")) };
-      case "TransactionMeta":
-        return { type, fields: transactionMetaFields(xdr.TransactionMeta.fromXDR(base64, "base64")) };
-      case "LedgerEntry":
-        return { type, fields: ledgerEntryFields(xdr.LedgerEntry.fromXDR(base64, "base64")) };
-      case "LedgerKey":
-        return { type, fields: ledgerKeyFields(xdr.LedgerKey.fromXDR(base64, "base64")) };
-      case "ScSpecEntry":
-        return { type, fields: specEntryFields(xdr.ScSpecEntry.fromXDR(base64, "base64")) };
-      case "ScVal":
-        return { type, fields: scValFields(xdr.ScVal.fromXDR(base64, "base64")) };
-    }
+    return { type, fields: summarize(type, base64), partial: false };
   } catch {
-    // The type round-tripped but a field accessor didn't behave as expected —
-    // report the type we're confident about rather than failing outright.
-    return { type, fields: [] };
+    // The type round-tripped but a field accessor didn't behave as expected.
+    // Report the type we're confident about, flagged so the page can say so.
+    return { type, fields: [], partial: true };
   }
 }
