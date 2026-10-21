@@ -106,16 +106,16 @@ export default function DocsPage() {
             <p className="text-sm text-prism-muted mb-3">{ep.description}</p>
             {ep.params && (
               <p className="text-xs font-mono text-prism-muted mb-1">
-                <span className="text-white">params:</span> {ep.params}
+                <span className="text-prism-strong">params:</span> {ep.params}
               </p>
             )}
             {ep.body && (
               <p className="text-xs font-mono text-prism-muted mb-1 break-all">
-                <span className="text-white">body:</span> {ep.body}
+                <span className="text-prism-strong">body:</span> {ep.body}
               </p>
             )}
             <p className="text-xs font-mono text-prism-muted break-all mt-2">
-              <span className="text-white">example:</span> {ep.example}
+              <span className="text-prism-strong">example:</span> {ep.example}
             </p>
             {ep.notes && <p className="text-xs text-prism-muted mt-2 italic">{ep.notes}</p>}
           </div>

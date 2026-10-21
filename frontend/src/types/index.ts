@@ -48,14 +48,6 @@ export interface AccountRecord {
   signerCount: number;
 }
 
-export interface ContractRecord {
-  id: string;
-  wasmHash: string;
-  createdAt: string;
-  creator: string;
-  invocationCount?: number;
-}
-
 export interface ContractEvent {
   id: string;
   contractId: string;
