@@ -18,6 +18,24 @@
   --prism-muted: 107 114 128;
 }
 
+/* The light palette, used when the system asks for it. The accent and status
+   colours are darker than in the dark theme so their text stays readable on
+   the translucent badge tints. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --prism-bg: 248 250 252;
+    --prism-surface: 255 255 255;
+    --prism-border: 226 232 240;
+    --prism-text: 15 23 42;
+    --prism-strong: 15 23 42;
+    --prism-accent: 29 78 216;
+    --prism-green: 22 101 52;
+    --prism-red: 185 28 28;
+    --prism-muted: 91 101 120;
+  }
+}
+
 body {
   background: rgb(var(--prism-bg));
   color: rgb(var(--prism-text));
