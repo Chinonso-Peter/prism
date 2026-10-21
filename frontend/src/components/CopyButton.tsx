@@ -16,30 +16,40 @@ interface Props {
  * whitespace too.
  *
  * navigator.clipboard is only available in a secure context, so a Prism served
- * over plain HTTP on a LAN address won't have it. The button then leaves the
- * text selectable and says nothing false about having copied it.
+ * over plain HTTP on a LAN address won't have it. The button then says so and
+ * asks the user to select the text by hand, rather than claiming a copy that
+ * didn't happen.
  */
 export default function CopyButton({ value, what }: Props) {
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      setStatus("copied");
+      window.setTimeout(() => setStatus("idle"), 1500);
     } catch {
-      // No clipboard access — don't claim a copy that didn't happen.
+      // No clipboard access — tell the user to select the text instead.
+      setStatus("failed");
+      window.setTimeout(() => setStatus("idle"), 3000);
     }
   }
+
+  const label =
+    status === "copied"
+      ? `${what} copied`
+      : status === "failed"
+        ? `Couldn't copy ${what}; select it to copy`
+        : `Copy ${what}`;
 
   return (
     <button
       type="button"
       onClick={handleCopy}
-      aria-label={copied ? `${what} copied` : `Copy ${what}`}
+      aria-label={label}
       className="shrink-0 text-xs border border-prism-border rounded px-2 py-0.5 text-prism-muted hover:text-white hover:border-prism-accent transition"
     >
-      {copied ? "Copied" : "Copy"}
+      {status === "copied" ? "Copied" : status === "failed" ? "Select to copy" : "Copy"}
     </button>
   );
 }
