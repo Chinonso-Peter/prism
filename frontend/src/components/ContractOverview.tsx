@@ -1,15 +1,16 @@
 import type { ContractInfo, ContractWasmInfo } from "@/types";
 import { formatNumber } from "@/lib/format";
 import DetailRow from "@/components/DetailRow";
+import ErrorState from "@/components/ErrorState";
 
 interface Props { info: ContractInfo | null; wasm: ContractWasmInfo | null }
 
 export default function ContractOverview({ info, wasm }: Props) {
   if (!info) {
     return (
-      <p className="text-prism-muted text-sm">
+      <ErrorState>
         Couldn&apos;t load this contract — double-check the ID, or the RPC endpoint may be unreachable.
-      </p>
+      </ErrorState>
     );
   }
 

@@ -1,16 +1,17 @@
 import Link from "next/link";
 import type { InvocationHistoryItem } from "@/types";
 import { shortHash, timeAgo } from "@/lib/format";
+import EmptyState from "@/components/EmptyState";
 
 interface Props { items: InvocationHistoryItem[] }
 
 export default function InvocationHistory({ items }: Props) {
   if (items.length === 0) {
     return (
-      <p className="text-prism-muted text-sm">
+      <EmptyState>
         No recent invocations found. This contract may not emit events (invocation history is derived from
         them), or its recent activity may be outside the RPC node&apos;s retention window.
-      </p>
+      </EmptyState>
     );
   }
 
