@@ -1,15 +1,42 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { xdr } from "@stellar/stellar-sdk";
 import { getTransaction, isNotFound } from "@/lib/horizon";
 import CopyButton from "@/components/CopyButton";
 import { getInvocationReturnValue } from "@/lib/soroban";
-import { decodeInvocation, decodeTransactionFailure, getResourceUsage } from "@/lib/xdr";
+import { decodeInvocations, decodeTransactionFailure, getResourceUsage } from "@/lib/xdr";
 import { formatDate, formatFee, stroopsToXlm, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
+import DetailRow from "@/components/DetailRow";
 
 export const dynamic = "force-dynamic";
 
 interface Props { params: { hash: string } }
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const shortHash = `${params.hash.slice(0, 8)}…${params.hash.slice(-8)}`;
+  try {
+    const tx = await getTransaction(params.hash);
+    const status = tx.successful ? "Success" : "Failed";
+    const title = `Transaction ${shortHash} — ${status}`;
+    const description = `Stellar transaction ${params.hash}: ${status}, ledger ${tx.ledger}, ${tx.operationCount} operation${tx.operationCount === 1 ? "" : "s"}, fee ${stroopsToXlm(tx.fee)}.`;
+    return {
+      title,
+      description,
+      openGraph: { title, description },
+      twitter: { title, description },
+    };
+  } catch {
+    const title = `Transaction ${shortHash}`;
+    const description = `Stellar transaction ${params.hash}.`;
+    return {
+      title,
+      description,
+      openGraph: { title, description },
+      twitter: { title, description },
+    };
+  }
+}
 
 export default async function TxPage({ params }: Props) {
   let tx;
@@ -37,9 +64,9 @@ export default async function TxPage({ params }: Props) {
   const failure = outcome?.status === "failed" ? outcome.failure : null;
   const failureUndecodable = outcome?.status === "undecodable";
 
-  const invocation = envelope ? decodeInvocation(envelope) : null;
+  const invocations = envelope ? decodeInvocations(envelope) : [];
   const resources = envelope ? getResourceUsage(envelope) : null;
-  const returnValue = invocation ? await getInvocationReturnValue(tx.hash) : null;
+  const returnValue = invocations.length > 0 ? await getInvocationReturnValue(tx.hash) : null;
 
   return (
     <div>
@@ -50,13 +77,13 @@ export default async function TxPage({ params }: Props) {
       </div>
 
       <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
-        <Row label="Status" value={tx.successful ? "✓ Success" : "✗ Failed"} />
-        <Row label="Ledger" value={String(tx.ledger)} />
-        <Row label="Timestamp" value={formatDate(tx.createdAt)} />
-        <Row label="Source" value={tx.sourceAccount} mono />
-        <Row label="Fee" value={`${formatFee(tx.fee)} (${stroopsToXlm(tx.fee)})`} />
-        <Row label="Operations" value={String(tx.operationCount)} />
-        {tx.memo && <Row label="Memo" value={tx.memo} />}
+        <DetailRow label="Status" value={tx.successful ? "✓ Success" : "✗ Failed"} />
+        <DetailRow label="Ledger" value={String(tx.ledger)} />
+        <DetailRow label="Timestamp" value={formatDate(tx.createdAt)} />
+        <DetailRow label="Source" value={tx.sourceAccount} mono />
+        <DetailRow label="Fee" value={`${formatFee(tx.fee)} (${stroopsToXlm(tx.fee)})`} />
+        <DetailRow label="Operations" value={String(tx.operationCount)} />
+        {tx.memo && <DetailRow label="Memo" value={tx.memo} />}
       </div>
 
       {failure && (
@@ -122,9 +149,14 @@ export default async function TxPage({ params }: Props) {
         </div>
       )}
 
-      {invocation && (
-        <div className="mt-6 rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
-          <h2 className="text-lg font-semibold mb-1">Soroban Invocation</h2>
+      {invocations.map((invocation, i) => (
+        <div
+          key={invocation.operationIndex}
+          className="mt-6 rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4"
+        >
+          <h2 className="text-lg font-semibold mb-1">
+            Soroban Invocation <span className="text-sm font-mono text-prism-muted">operation #{invocation.operationIndex}</span>
+          </h2>
           <Row label="Contract" value={invocation.contractId} mono link={`/contract/${invocation.contractId}`} />
           <Row label="Function" value={invocation.functionName} mono />
           {invocation.args.length > 0 && (
@@ -139,35 +171,18 @@ export default async function TxPage({ params }: Props) {
               </div>
             </div>
           )}
-          {returnValue !== null && <Row label="Return Value" value={returnValue} mono />}
-          {resources && (
+          {/* Return value and resource usage describe the whole transaction, so they appear once, under the first call. */}
+          {i === 0 && returnValue !== null && <Row label="Return Value" value={returnValue} mono />}
+          {i === 0 && resources && (
             <>
-              <Row label="CPU Instructions" value={formatNumber(resources.instructions)} />
-              <Row label="Read Bytes" value={formatNumber(resources.readBytes)} />
-              <Row label="Write Bytes" value={formatNumber(resources.writeBytes)} />
-              <Row label="Resource Fee" value={`${resources.resourceFeeStroops} stroops`} />
+              <DetailRow label="CPU Instructions" value={formatNumber(resources.instructions)} />
+              <DetailRow label="Read Bytes" value={formatNumber(resources.readBytes)} />
+              <DetailRow label="Write Bytes" value={formatNumber(resources.writeBytes)} />
+              <DetailRow label="Resource Fee" value={`${resources.resourceFeeStroops} stroops`} />
             </>
           )}
         </div>
-      )}
-    </div>
-  );
-}
-
-function Row({ label, value, mono, link }: { label: string; value: string; mono?: boolean; link?: string }) {
-  return (
-    <div className="flex justify-between border-b border-prism-border pb-3 last:border-0 last:pb-0 gap-4">
-      <span className="text-prism-muted text-sm shrink-0">{label}</span>
-      {link ? (
-        <Link
-          href={link}
-          className={`text-sm text-right break-all text-prism-accent hover:underline ${mono ? "font-mono" : ""}`}
-        >
-          {value}
-        </Link>
-      ) : (
-        <span className={`text-sm text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
-      )}
+      ))}
     </div>
   );
 }

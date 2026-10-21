@@ -23,7 +23,7 @@ export default function NotFound() {
 
       <Link
         href="/explorer"
-        className="border border-prism-border px-4 py-2 rounded-lg text-xs font-medium text-prism-muted hover:text-white transition inline-block"
+        className="border border-prism-border px-4 py-2 rounded-lg text-xs font-medium text-prism-muted hover:text-prism-strong transition inline-block"
       >
         Back to the explorer
       </Link>

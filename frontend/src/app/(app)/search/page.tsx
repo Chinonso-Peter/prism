@@ -1,15 +1,17 @@
 import { redirect } from "next/navigation";
 import SearchBar from "@/components/SearchBar";
+import { resolveSearchRoute } from "@/lib/search";
 
 interface Props { searchParams: { q?: string } }
 
 export default function SearchPage({ searchParams }: Props) {
   const query = (searchParams.q ?? "").trim();
 
-  if (/^[0-9a-fA-F]{64}$/.test(query)) redirect(`/tx/${query}`);
-  if (/^C[A-Z0-9]{55}$/.test(query)) redirect(`/contract/${query}`);
-  if (/^G[A-Z0-9]{55}$/.test(query)) redirect(`/account/${query}`);
-  if (/^\d+$/.test(query)) redirect(`/ledger/${query}`);
+  if (query) {
+    const route = resolveSearchRoute(query);
+    // Only redirect if the route is not /search itself (avoid infinite loop)
+    if (route && !route.startsWith("/search")) redirect(route);
+  }
 
   return (
     <div>

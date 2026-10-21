@@ -1,9 +1,29 @@
 // Display formatting utilities for Prism
 
+import type { AccountBalance } from "@/types";
+
 /** Shorten a hash or address: "GABCD...XYZ" */
 export function shortHash(hash: string, chars = 6): string {
   if (hash.length <= chars * 2 + 3) return hash;
   return `${hash.slice(0, chars)}...${hash.slice(-chars)}`;
+}
+
+/**
+ * A readable label for an account balance's asset.
+ *
+ * Liquidity pool shares have no asset code, so they are labelled with a
+ * shortened pool ID. Any other balance with no code falls back to its asset
+ * type, rather than printing "undefined".
+ */
+export function balanceLabel(balance: AccountBalance): string {
+  if (balance.assetType === "native") return "XLM";
+  if (balance.assetType === "liquidity_pool_shares" && balance.liquidityPoolId) {
+    return `Pool ${shortHash(balance.liquidityPoolId, 6)}`;
+  }
+  if (balance.assetCode) {
+    return `${balance.assetCode}:${balance.assetIssuer ? shortHash(balance.assetIssuer, 4) : ""}`;
+  }
+  return balance.assetType;
 }
 
 /** Format stroops to XLM string: 1_000_000 → "0.1 XLM" */
@@ -22,6 +42,20 @@ export function formatDate(iso: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+/**
+ * Format an ISO timestamp as an absolute UTC label. Unlike formatDate, the
+ * output doesn't depend on the machine's time zone or locale, so the server
+ * and the browser render the same text.
+ */
+export function formatTimestampUtc(iso: string): string {
+  const label = new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  });
+  return `${label} UTC`;
 }
 
 /** Format a number with thousands separators */
