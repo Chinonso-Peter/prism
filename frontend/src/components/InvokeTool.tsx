@@ -10,7 +10,6 @@ import { formatNumber } from "@/lib/format";
 interface Props {
   contractId: string;
   functions: ContractFunctionSpec[];
-  /** The contract's own types, used to name an error code it returns. */
   types?: ContractTypeDef[];
 }
 
@@ -18,23 +17,66 @@ export default function InvokeTool({ contractId, functions, types = [] }: Props)
   const [selected, setSelected] = useState(functions[0]?.name ?? "");
   const fn = functions.find((f) => f.name === selected);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [jsonErrors, setJsonErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [pending, startTransition] = useTransition();
 
   function handleSelect(name: string) {
     setSelected(name);
     setValues({});
+    setJsonErrors({});
     setResult(null);
   }
 
+  function validateJsonArg(name: string, value: string, type: string): string | null {
+    if (!value.trim()) return null;
+    if (!needsJsonValidation(type)) return null;
+    try {
+      JSON.parse(value);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "Invalid JSON";
+    }
+  }
+
+  function handleArgChange(name: string, value: string, type: string) {
+    setValues((v) => ({ ...v, [name]: value }));
+    const error = validateJsonArg(name, value, type);
+    setJsonErrors((e) => {
+      if (error) return { ...e, [name]: error };
+      const { [name]: _, ...rest } = e;
+      return rest;
+    });
+  }
+
+  function needsJsonValidation(type: string): boolean {
+    return /^(Vec|Map)</.test(type.trim()) || 
+           types.some((t) => t.name === type.trim() && (t.kind === "struct" || t.kind === "union"));
+  }
+
+  const hasJsonErrors = Object.keys(jsonErrors).length > 0;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!fn) return;
+    if (!fn || hasJsonErrors) return;
     const args = fn.inputs.map((input) => ({ value: values[input.name] ?? "", type: input.type }));
     startTransition(async () => {
       const res = await simulateInvocationAction(contractId, fn.name, args, types);
       setResult(res);
     });
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text);
+  }
+
+  function formatReturnValue(value: string): { formatted: string; raw: string } {
+    try {
+      const parsed = JSON.parse(value);
+      return { formatted: JSON.stringify(parsed, null, 2), raw: value };
+    } catch {
+      return { formatted: value, raw: value };
+    }
   }
 
   return (
@@ -58,25 +100,33 @@ export default function InvokeTool({ contractId, functions, types = [] }: Props)
 
         {fn && fn.inputs.length > 0 && (
           <div className="space-y-2">
-            {fn.inputs.map((input) => (
-              <div key={input.name} className="flex items-center gap-2">
-                <label className="text-xs font-mono text-prism-muted w-32 shrink-0 truncate">
-                  {input.name}: {input.type}
-                </label>
-                <input
-                  value={values[input.name] ?? ""}
-                  onChange={(e) => setValues((v) => ({ ...v, [input.name]: e.target.value }))}
-                  className="flex-1 bg-prism-bg border border-prism-border rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-prism-accent"
-                  placeholder={placeholderFor(input.type, types)}
-                />
-              </div>
-            ))}
+            {fn.inputs.map((input) => {
+              const inputId = `${fn.name}-${input.name}`;
+              const error = jsonErrors[input.name];
+              return (
+                <div key={input.name} className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor={inputId} className="text-xs font-mono text-prism-muted w-32 shrink-0 truncate">
+                      {input.name}: {input.type}
+                    </label>
+                    <input
+                      id={inputId}
+                      value={values[input.name] ?? ""}
+                      onChange={(e) => handleArgChange(input.name, e.target.value, input.type)}
+                      className="flex-1 bg-prism-bg border border-prism-border rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-prism-accent"
+                      placeholder={placeholderFor(input.type, types)}
+                    />
+                  </div>
+                  {error && <p className="text-xs text-prism-red ml-32 pl-2">{error}</p>}
+                </div>
+              );
+            })}
           </div>
         )}
 
         <button
           type="submit"
-          disabled={pending || !fn}
+          disabled={pending || !fn || hasJsonErrors}
           className="bg-prism-accent text-white px-4 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
         >
           {pending ? "Simulating…" : "Simulate call"}
@@ -89,9 +139,21 @@ export default function InvokeTool({ contractId, functions, types = [] }: Props)
             <div className="space-y-1">
               <p className="text-prism-green">Simulation succeeded</p>
               {result.returnValue !== undefined && (
-                <p className="break-all">
-                  <span className="text-prism-muted">Return:</span> {result.returnValue}
-                </p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-prism-muted">Return:</span>
+                    <button
+                      onClick={() => copyToClipboard(formatReturnValue(result.returnValue!).raw)}
+                      className="text-prism-accent hover:underline text-xs"
+                      type="button"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <pre className="break-all whitespace-pre-wrap bg-prism-bg border border-prism-border rounded p-2 text-xs">
+                    {formatReturnValue(result.returnValue).formatted}
+                  </pre>
+                </div>
               )}
               {result.instructions !== undefined && (
                 <p>
@@ -114,10 +176,6 @@ export default function InvokeTool({ contractId, functions, types = [] }: Props)
   );
 }
 
-/**
- * A failed simulation, with the contract's own name for the error code when
- * its ABI declares one — "Error(Contract, #3)" means nothing on its own.
- */
 function ErrorReport({ message, types }: { message: string; types: ContractTypeDef[] }) {
   const named = describeContractError(message, types);
 
@@ -133,11 +191,6 @@ function ErrorReport({ message, types }: { message: string; types: ContractTypeD
   );
 }
 
-/**
- * Show the shape an argument wants, not just its type name. A reader faced
- * with "DataKey" has no way to guess that a payload-free variant is typed as a
- * bare name while one with a payload needs {"Note": [...]}.
- */
 function placeholderFor(type: string, types: ContractTypeDef[]): string {
   const generic = /^(Vec|Map|Option)<(.+)>$/.exec(type.trim());
   if (generic) {
