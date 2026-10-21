@@ -67,6 +67,52 @@ export function decodeInvocation(envelope: xdr.TransactionEnvelope): DecodedInvo
   }
 }
 
+export function extractInvocationReturnValue(meta: xdr.TransactionMeta): string | null {
+  const returnValue = sorobanReturnValue(meta);
+  return returnValue ? scValToDisplay(returnValue) : null;
+}
+
+export interface DecodedContractCreation {
+  contractId: string;
+  creator: string;
+}
+
+export function decodeContractCreation(
+  envelope: xdr.TransactionEnvelope,
+  meta: xdr.TransactionMeta,
+  creator: string
+): DecodedContractCreation | null {
+  try {
+    const tx = unwrapTx(envelope);
+    const createsContract = tx.operations().some((op) => {
+      if (op.body().switch().name !== "invokeHostFunction") return false;
+      const hostFunction = op.body().invokeHostFunctionOp().hostFunction();
+      const kind = hostFunction.switch().name;
+      return kind === "hostFunctionTypeCreateContract" || kind === "hostFunctionTypeCreateContractV2";
+    });
+    if (!createsContract) return null;
+    const returnValue = sorobanReturnValue(meta);
+    if (!returnValue) return null;
+    if (returnValue.switch().name !== "scvAddress") return null;
+    return {
+      contractId: Address.fromScAddress(returnValue.address()).toString(),
+      creator,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sorobanReturnValue(meta: xdr.TransactionMeta): xdr.ScVal | null {
+  try {
+    if (meta.switch() === 3) return meta.v3().sorobanMeta()?.returnValue() ?? null;
+    if (meta.switch() === 4) return meta.v4().sorobanMeta()?.returnValue() ?? null;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export interface DecodedStorageChange {
   contractId: string;
   durability: "persistent" | "temporary" | "instance";

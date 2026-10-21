@@ -25,6 +25,16 @@ export default function ContractOverview({ info, wasm }: Props) {
       {info.lastModifiedLedgerSeq !== undefined && (
         <DetailRow label="Last Modified Ledger" value={`#${formatNumber(info.lastModifiedLedgerSeq)}`} />
       )}
+      {info.creator && (
+        <DetailRow label="Creator" value={info.creator} mono link={`/account/${info.creator}`} />
+      )}
+      {info.deploymentLedger !== undefined && (
+        <DetailRow
+          label="Deployment Ledger"
+          value={`#${formatNumber(info.deploymentLedger)}`}
+          link={`/ledger/${info.deploymentLedger}`}
+        />
+      )}
 
       {wasm && wasm.functions.length > 0 && (
         <div className="pt-2">

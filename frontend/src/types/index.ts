@@ -72,6 +72,8 @@ export interface ContractInfo {
   liveUntilLedgerSeq?: number;
   lastModifiedLedgerSeq?: number;
   instanceStorage: StorageEntry[];
+  creator?: string;
+  deploymentLedger?: number;
 }
 
 export interface ContractFunctionSpec {

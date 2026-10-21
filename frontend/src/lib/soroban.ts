@@ -14,7 +14,14 @@ import {
   scValToDisplay,
 } from "./xdr";
 import { config } from "./config";
-import { isIndexerConfigured, getIndexedInvocations, getIndexedEvents, getIndexedStorageEntries } from "./indexed-db";
+import {
+  getIndexedContract,
+  getIndexedEvents,
+  getIndexedInvocationReturnValue,
+  getIndexedInvocations,
+  getIndexedStorageEntries,
+  isIndexerConfigured,
+} from "./indexed-db";
 
 const RPC_URL = config.sorobanRpcUrl;
 
@@ -32,6 +39,7 @@ function server(): rpc.Server {
  * lookups by known key (see lookupStorageEntry).
  */
 export async function getContractInfo(contractId: string): Promise<ContractInfo | null> {
+  let info: ContractInfo;
   try {
     const entry = await server().getContractData(
       contractId,
@@ -46,7 +54,7 @@ export async function getContractInfo(contractId: string): Promise<ContractInfo 
       value: scValToDisplay(e.val()),
       durability: "instance" as const,
     }));
-    return {
+    info = {
       executable: isWasm ? "wasm" : "stellar_asset",
       wasmHash: isWasm ? executable.wasmHash().toString("hex") : undefined,
       liveUntilLedgerSeq: entry.liveUntilLedgerSeq,
@@ -56,6 +64,13 @@ export async function getContractInfo(contractId: string): Promise<ContractInfo 
   } catch {
     return null;
   }
+
+  const indexed = await getIndexedContract(contractId);
+  return {
+    ...info,
+    creator: indexed?.creator,
+    deploymentLedger: indexed?.deploymentLedger,
+  };
 }
 
 export type StorageKeyKind = "symbol" | "string" | "u32" | "address";
@@ -238,6 +253,9 @@ export async function getInvocationHistory(contractId: string, limit = 20): Prom
  * has already pruned.
  */
 export async function getInvocationReturnValue(txHash: string): Promise<string | null> {
+  const indexed = await getIndexedInvocationReturnValue(txHash);
+  if (indexed !== null) return indexed;
+
   try {
     const res = await server().getTransaction(txHash);
     if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) return null;
