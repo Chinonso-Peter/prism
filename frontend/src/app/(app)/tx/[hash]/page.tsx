@@ -3,7 +3,7 @@ import { xdr } from "@stellar/stellar-sdk";
 import { getTransaction, isNotFound } from "@/lib/horizon";
 import CopyButton from "@/components/CopyButton";
 import { getInvocationReturnValue } from "@/lib/soroban";
-import { decodeInvocation, decodeTransactionFailure, getResourceUsage } from "@/lib/xdr";
+import { decodeInvocations, decodeTransactionFailure, getResourceUsage } from "@/lib/xdr";
 import { formatDate, formatFee, stroopsToXlm, formatNumber } from "@/lib/format";
 import { notFound } from "next/navigation";
 import DetailRow from "@/components/DetailRow";
@@ -38,9 +38,9 @@ export default async function TxPage({ params }: Props) {
   const failure = outcome?.status === "failed" ? outcome.failure : null;
   const failureUndecodable = outcome?.status === "undecodable";
 
-  const invocation = envelope ? decodeInvocation(envelope) : null;
+  const invocations = envelope ? decodeInvocations(envelope) : [];
   const resources = envelope ? getResourceUsage(envelope) : null;
-  const returnValue = invocation ? await getInvocationReturnValue(tx.hash) : null;
+  const returnValue = invocations.length > 0 ? await getInvocationReturnValue(tx.hash) : null;
 
   return (
     <div>
@@ -123,11 +123,16 @@ export default async function TxPage({ params }: Props) {
         </div>
       )}
 
-      {invocation && (
-        <div className="mt-6 rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
-          <h2 className="text-lg font-semibold mb-1">Soroban Invocation</h2>
-          <DetailRow label="Contract" value={invocation.contractId} mono link={`/contract/${invocation.contractId}`} />
-          <DetailRow label="Function" value={invocation.functionName} mono />
+      {invocations.map((invocation, i) => (
+        <div
+          key={invocation.operationIndex}
+          className="mt-6 rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4"
+        >
+          <h2 className="text-lg font-semibold mb-1">
+            Soroban Invocation <span className="text-sm font-mono text-prism-muted">operation #{invocation.operationIndex}</span>
+          </h2>
+          <Row label="Contract" value={invocation.contractId} mono link={`/contract/${invocation.contractId}`} />
+          <Row label="Function" value={invocation.functionName} mono />
           {invocation.args.length > 0 && (
             <div className="border-b border-prism-border pb-3">
               <p className="text-prism-muted text-sm mb-2">Arguments</p>
@@ -140,8 +145,9 @@ export default async function TxPage({ params }: Props) {
               </div>
             </div>
           )}
-          {returnValue !== null && <DetailRow label="Return Value" value={returnValue} mono />}
-          {resources && (
+          {/* Return value and resource usage describe the whole transaction, so they appear once, under the first call. */}
+          {i === 0 && returnValue !== null && <Row label="Return Value" value={returnValue} mono />}
+          {i === 0 && resources && (
             <>
               <DetailRow label="CPU Instructions" value={formatNumber(resources.instructions)} />
               <DetailRow label="Read Bytes" value={formatNumber(resources.readBytes)} />
@@ -150,7 +156,7 @@ export default async function TxPage({ params }: Props) {
             </>
           )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

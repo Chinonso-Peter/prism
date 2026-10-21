@@ -120,6 +120,57 @@ describe("coerceArgInput", () => {
       'Map<Symbol, U32> expects a JSON object, e.g. {"key": 1}.'
     );
   });
+
+  it("converts hex bytes with or without a 0x prefix", () => {
+    expect(coerceArgInput("0xabcd", "Bytes").bytes().toString("hex")).toBe("abcd");
+    expect(coerceArgInput("ABCD", "Bytes").bytes().toString("hex")).toBe("abcd");
+  });
+
+  it("rejects bytes that are not whole hex pairs instead of silently truncating them", () => {
+    expect(() => coerceArgInput("zz", "Bytes")).toThrow('"zz" is not valid hex.');
+    expect(() => coerceArgInput("ab_cd", "Bytes")).toThrow('"ab_cd" is not valid hex.');
+    expect(() => coerceArgInput("abc", "Bytes")).toThrow('"abc" is not valid hex.');
+  });
+});
+
+describe("coerceArgInput integer ranges", () => {
+  const integerTypes = [
+    { type: "U32", min: "0", max: "4294967295", scvName: "scvU32" },
+    { type: "I32", min: "-2147483648", max: "2147483647", scvName: "scvI32" },
+    { type: "U64", min: "0", max: "18446744073709551615", scvName: "scvU64" },
+    { type: "I64", min: "-9223372036854775808", max: "9223372036854775807", scvName: "scvI64" },
+    {
+      type: "U128",
+      min: "0",
+      max: "340282366920938463463374607431768211455",
+      scvName: "scvU128",
+    },
+    {
+      type: "I128",
+      min: "-170141183460469231731687303715884105728",
+      max: "170141183460469231731687303715884105727",
+      scvName: "scvI128",
+    },
+  ];
+
+  it.each(integerTypes)("accepts the bounds of $type", ({ type, min, max, scvName }) => {
+    expect(coerceArgInput(min, type).switch().name).toBe(scvName);
+    expect(coerceArgInput(max, type).switch().name).toBe(scvName);
+  });
+
+  it.each(integerTypes)("rejects values outside $type's range and names its bounds", ({ type, min, max }) => {
+    const tooBig = (BigInt(max) + BigInt(1)).toString();
+    const tooSmall = (BigInt(min) - BigInt(1)).toString();
+    const message = `is not a valid ${type}. ${type} takes a whole number from ${min} to ${max}.`;
+    expect(() => coerceArgInput(tooBig, type)).toThrow(`"${tooBig}" ${message}`);
+    expect(() => coerceArgInput(tooSmall, type)).toThrow(`"${tooSmall}" ${message}`);
+  });
+
+  it.each(integerTypes)("rejects decimal and non-numeric input for $type", ({ type }) => {
+    for (const bad of ["1.5", "1e3", "abc", ""]) {
+      expect(() => coerceArgInput(bad, type)).toThrow(`is not a valid ${type}.`);
+    }
+  });
 });
 
 describe("parseContractSpec", () => {

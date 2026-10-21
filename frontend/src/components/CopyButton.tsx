@@ -37,7 +37,7 @@ export default function CopyButton({ value, what }: Props) {
       type="button"
       onClick={handleCopy}
       aria-label={copied ? `${what} copied` : `Copy ${what}`}
-      className="shrink-0 text-xs border border-prism-border rounded px-2 py-0.5 text-prism-muted hover:text-white hover:border-prism-accent transition"
+      className="shrink-0 text-xs border border-prism-border rounded px-2 py-0.5 text-prism-muted hover:text-prism-strong hover:border-prism-accent transition"
     >
       {copied ? "Copied" : "Copy"}
     </button>

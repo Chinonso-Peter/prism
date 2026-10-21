@@ -76,7 +76,7 @@ export default function XdrDecoder({ initialInput = "", initialResult = null }: 
           <button
             type="button"
             onClick={handleClear}
-            className="border border-prism-border px-4 py-2 rounded-lg text-xs font-medium text-prism-muted hover:text-white transition"
+            className="border border-prism-border px-4 py-2 rounded-lg text-xs font-medium text-prism-muted hover:text-prism-strong transition"
           >
             Clear
           </button>

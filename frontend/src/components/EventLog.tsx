@@ -52,7 +52,7 @@ export default function EventLog({ events, specs = [] }: Props) {
               <div className="flex items-center gap-3 shrink-0">
                 <Link
                   href={`/tx/${e.txHash}`}
-                  className="text-xs text-prism-muted hover:text-white transition font-mono"
+                  className="text-xs text-prism-muted hover:text-prism-strong transition font-mono"
                 >
                   {shortHash(e.txHash, 4)}
                 </Link>
@@ -71,7 +71,7 @@ export default function EventLog({ events, specs = [] }: Props) {
                         {field.name}
                         <span className="opacity-60"> ({field.type})</span>
                       </dt>
-                      <dd className="font-mono text-white break-all">{field.value}</dd>
+                      <dd className="font-mono text-prism-strong break-all">{field.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -79,7 +79,7 @@ export default function EventLog({ events, specs = [] }: Props) {
             ) : (
               e.topic.length > 0 && (
                 <p className="text-xs text-prism-muted mb-1">
-                  Topic: <span className="font-mono text-white">{e.topic.join(", ")}</span>
+                  Topic: <span className="font-mono text-prism-strong">{e.topic.join(", ")}</span>
                 </p>
               )
             )}
@@ -92,7 +92,7 @@ export default function EventLog({ events, specs = [] }: Props) {
                       {field.name}
                       <span className="opacity-60"> ({field.type})</span>
                     </dt>
-                    <dd className="font-mono text-white break-all">{field.value}</dd>
+                    <dd className="font-mono text-prism-strong break-all">{field.value}</dd>
                   </div>
                 ))}
               </dl>
