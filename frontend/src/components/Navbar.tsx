@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SearchBar from "./SearchBar";
+import NavLinks from "./NavLinks";
 import { config, type StellarNetwork } from "@/lib/config";
 
 /**
@@ -18,7 +19,7 @@ const NETWORK_STYLES: Record<StellarNetwork, string> = {
 export default function Navbar() {
   return (
     <nav className="border-b border-prism-border bg-prism-surface px-4 py-3">
-      <div className="max-w-7xl mx-auto flex items-center gap-6">
+      <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-3 sm:gap-6">
         <Link href="/explorer" className="flex items-center gap-2 shrink-0">
           <span className="text-lg font-bold text-prism-strong">Prism</span>
           <span
@@ -29,7 +30,7 @@ export default function Navbar() {
             {config.network}
           </span>
         </Link>
-        <div className="flex-1 max-w-xl">
+        <div className="flex-1 min-w-0 w-full sm:w-auto order-last sm:order-none">
           <SearchBar />
         </div>
         <div className="flex gap-5 text-sm text-prism-muted shrink-0">
