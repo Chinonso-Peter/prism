@@ -811,6 +811,15 @@ describe("decodeTransactionFailure", () => {
     return outcome.failure;
   }
 
+  /** A failed transaction result carrying the given operation results, as Horizon serves it. */
+  function failedResultXdr(operations: xdr.OperationResult[]): string {
+    return new xdr.TransactionResult({
+      feeCharged: xdr.Int64.fromString("100"),
+      result: xdr.TransactionResultResult.txFailed(operations),
+      ext: new xdr.TransactionResultExt(0),
+    }).toXDR("base64");
+  }
+
   it("reports the transaction-level failure code", () => {
     expect(failureOf(FAILED_RESULT_XDR).resultCode).toBe("txFailed");
   });
@@ -845,5 +854,44 @@ describe("decodeTransactionFailure", () => {
   it("reports a result it can't parse as undecodable, not as a success", () => {
     expect(decodeTransactionFailure("not xdr")).toEqual({ status: "undecodable" });
     expect(decodeTransactionFailure("")).toEqual({ status: "undecodable" });
+  });
+
+  describe("per-operation results", () => {
+    it("reads a payment's code, and the index of the payment that failed", () => {
+      const failure = failureOf(
+        failedResultXdr([
+          xdr.OperationResult.opInner(
+            xdr.OperationResultTr.payment(xdr.PaymentResult.paymentSuccess())
+          ),
+          xdr.OperationResult.opInner(
+            xdr.OperationResultTr.payment(xdr.PaymentResult.paymentUnderfunded())
+          ),
+        ])
+      );
+      expect(failure.operations).toEqual([
+        { index: 0, code: "paymentSuccess", failed: false },
+        { index: 1, code: "paymentUnderfunded", failed: true },
+      ]);
+    });
+
+    it("reads an invoke-host-function call that trapped", () => {
+      const failure = failureOf(
+        failedResultXdr([
+          xdr.OperationResult.opInner(
+            xdr.OperationResultTr.invokeHostFunction(
+              xdr.InvokeHostFunctionResult.invokeHostFunctionTrapped()
+            )
+          ),
+        ])
+      );
+      expect(failure.operations).toEqual([
+        { index: 0, code: "invokeHostFunctionTrapped", failed: true },
+      ]);
+    });
+
+    it("reads a classic failure that carries no nested operation result", () => {
+      const failure = failureOf(failedResultXdr([xdr.OperationResult.opBadAuth()]));
+      expect(failure.operations).toEqual([{ index: 0, code: "opBadAuth", failed: true }]);
+    });
   });
 });
