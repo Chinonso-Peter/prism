@@ -1,4 +1,5 @@
 import { getContractInfo, getContractWasmInfo, getContractEvents, getInvocationHistory, getFullStorageEntries } from "@/lib/soroban";
+import { isIndexerConfigured } from "@/lib/indexed-db";
 import ContractOverview from "@/components/ContractOverview";
 import ContractStorageView from "@/components/ContractStorageView";
 import LiveInvocationHistory from "@/components/LiveInvocationHistory";
@@ -55,7 +56,11 @@ export default async function ContractPage({ params }: Props) {
             Recent Invocations
             <LiveBadge />
           </h2>
-          <LiveInvocationHistory contractId={contractId} initialItems={invocations} />
+          <LiveInvocationHistory
+            contractId={contractId}
+            initialItems={invocations}
+            derivedFromEvents={!isIndexerConfigured()}
+          />
         </section>
 
         <section>
