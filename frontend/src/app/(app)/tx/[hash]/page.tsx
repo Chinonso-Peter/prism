@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { xdr } from "@stellar/stellar-sdk";
 import { getTransaction, isNotFound } from "@/lib/horizon";
 import CopyButton from "@/components/CopyButton";
@@ -10,6 +11,31 @@ import { notFound } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 interface Props { params: { hash: string } }
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const shortHash = `${params.hash.slice(0, 8)}…${params.hash.slice(-8)}`;
+  try {
+    const tx = await getTransaction(params.hash);
+    const status = tx.successful ? "Success" : "Failed";
+    const title = `Transaction ${shortHash} — ${status}`;
+    const description = `Stellar transaction ${params.hash}: ${status}, ledger ${tx.ledger}, ${tx.operationCount} operation${tx.operationCount === 1 ? "" : "s"}, fee ${stroopsToXlm(tx.fee)}.`;
+    return {
+      title,
+      description,
+      openGraph: { title, description },
+      twitter: { title, description },
+    };
+  } catch {
+    const title = `Transaction ${shortHash}`;
+    const description = `Stellar transaction ${params.hash}.`;
+    return {
+      title,
+      description,
+      openGraph: { title, description },
+      twitter: { title, description },
+    };
+  }
+}
 
 export default async function TxPage({ params }: Props) {
   let tx;
