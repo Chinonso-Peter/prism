@@ -120,6 +120,11 @@ export interface SorobanInvocation {
   args: string[];
 }
 
+/** A contract call taken from one operation of a transaction. */
+export interface OperationInvocation extends SorobanInvocation {
+  operationIndex: number;
+}
+
 export interface ResourceUsage {
   instructions: number;
   readBytes: number;
