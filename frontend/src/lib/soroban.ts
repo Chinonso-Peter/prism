@@ -1,4 +1,4 @@
-import { Address, rpc, xdr } from "@stellar/stellar-sdk";
+import { Account, Address, BASE_FEE, Contract, Keypair, Networks, TransactionBuilder, rpc, xdr } from "@stellar/stellar-sdk";
 import type {
   ContractEvent,
   ContractInfo,
@@ -298,9 +298,7 @@ export async function simulateInvocation(
   functionName: string,
   args: xdr.ScVal[]
 ): Promise<SimulationResult> {
-  const { Contract, TransactionBuilder, Account, BASE_FEE, Networks, Keypair } = await import(
-    "@stellar/stellar-sdk"
-  );
+
   try {
     const passphrases: Record<typeof config.network, string> = {
       mainnet: Networks.PUBLIC,
