@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getFullStorageEntries } from "@/lib/soroban";
 import { isIndexerConfigured } from "@/lib/indexed-db";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitRequest } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 interface Params { params: { id: string } }
 
 export async function GET(req: Request, { params }: Params) {
-  const limited = rateLimit(req, { scope: "contract-storage-full" });
+  const limited = rateLimitRequest(req, { scope: "contract-storage-full" });
   if (limited) return limited;
 
   if (!isIndexerConfigured()) {

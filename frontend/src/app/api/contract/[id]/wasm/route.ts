@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getContractInfo, getContractWasmInfo } from "@/lib/soroban";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitRequest } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 interface Params { params: { id: string } }
 
 export async function GET(req: Request, { params }: Params) {
-  const limited = rateLimit(req, { scope: "contract-wasm" });
+  const limited = rateLimitRequest(req, { scope: "contract-wasm" });
   if (limited) return limited;
 
   const info = await getContractInfo(params.id);
