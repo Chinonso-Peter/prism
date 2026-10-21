@@ -25,6 +25,7 @@ import {
   base64FromQueryParam,
   type ParsedTypeDef,
   type ParsedEventSpec,
+  type TransactionFailure,
 } from "./xdr";
 import { labelEventData, labelEventTopics, matchEventSpec } from "./event-spec";
 
@@ -803,18 +804,25 @@ describe("decodeTransactionFailure", () => {
   const FAILED_RESULT_XDR =
     "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";
 
+  /** The failure a result XDR describes, failing the test if it describes none. */
+  function failureOf(resultXdr: string): TransactionFailure {
+    const outcome = decodeTransactionFailure(resultXdr);
+    if (outcome.status !== "failed") throw new Error(`expected a failure, got ${outcome.status}`);
+    return outcome.failure;
+  }
+
   it("reports the transaction-level failure code", () => {
-    expect(decodeTransactionFailure(FAILED_RESULT_XDR)?.resultCode).toBe("txFailed");
+    expect(failureOf(FAILED_RESULT_XDR).resultCode).toBe("txFailed");
   });
 
   it("names each operation's own result code", () => {
-    const failure = decodeTransactionFailure(FAILED_RESULT_XDR)!;
+    const failure = failureOf(FAILED_RESULT_XDR);
     expect(failure.operations).toHaveLength(22);
     expect(failure.operations[0].code).toBe("manageSellOfferSuccess");
   });
 
   it("distinguishes the operations that actually failed", () => {
-    const failure = decodeTransactionFailure(FAILED_RESULT_XDR)!;
+    const failure = failureOf(FAILED_RESULT_XDR);
     const failed = failure.operations.filter((op) => op.failed);
     // 20 of the 22 operations succeeded and were rolled back with the rest.
     expect(failed).toHaveLength(2);
@@ -825,17 +833,17 @@ describe("decodeTransactionFailure", () => {
     expect(failed.every((op) => op.index > 0)).toBe(true);
   });
 
-  it("returns null for a successful transaction", () => {
+  it("reports a successful transaction as succeeded", () => {
     const success = new xdr.TransactionResult({
       feeCharged: xdr.Int64.fromString("100"),
       result: xdr.TransactionResultResult.txSuccess([]),
       ext: new xdr.TransactionResultExt(0),
     });
-    expect(decodeTransactionFailure(success.toXDR("base64"))).toBeNull();
+    expect(decodeTransactionFailure(success.toXDR("base64"))).toEqual({ status: "succeeded" });
   });
 
-  it("returns null rather than throwing on input that isn't a result", () => {
-    expect(decodeTransactionFailure("not xdr")).toBeNull();
-    expect(decodeTransactionFailure("")).toBeNull();
+  it("reports a result it can't parse as undecodable, not as a success", () => {
+    expect(decodeTransactionFailure("not xdr")).toEqual({ status: "undecodable" });
+    expect(decodeTransactionFailure("")).toEqual({ status: "undecodable" });
   });
 });
