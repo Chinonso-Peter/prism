@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getContractInfo, getContractWasmInfo, getContractEvents, getInvocationHistory, getFullStorageEntries } from "@/lib/soroban";
+import { getContractInfo, getContractWasmInfo, getContractEventsPage, getInvocationHistoryPage, getFullStorageEntries } from "@/lib/soroban";
 import { isIndexerConfigured } from "@/lib/indexed-db";
 import ContractOverview from "@/components/ContractOverview";
 import ContractStorageView from "@/components/ContractStorageView";
@@ -7,6 +7,10 @@ import LiveInvocationHistory from "@/components/LiveInvocationHistory";
 import InvokeTool from "@/components/InvokeTool";
 import LiveEventLog from "@/components/LiveEventLog";
 import CopyButton from "@/components/CopyButton";
+import SectionCount from "@/components/SectionCount";
+
+const EVENTS_LIMIT = 50;
+const INVOCATIONS_LIMIT = 20;
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +34,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ContractPage({ params }: Props) {
   const contractId = params.id;
   const info = await getContractInfo(contractId);
-  const [wasm, events, invocations, fullStorage] = await Promise.all([
+  const [wasm, eventsPage, invocationsPage, fullStorage] = await Promise.all([
     info.executable === "wasm" ? getContractWasmInfo(contractId) : Promise.resolve(null),
-    getContractEvents(contractId),
-    getInvocationHistory(contractId),
+    getContractEventsPage(contractId, { limit: EVENTS_LIMIT }),
+    getInvocationHistoryPage(contractId, { limit: INVOCATIONS_LIMIT }),
     getFullStorageEntries(contractId),
   ]);
+
+  const rpcFallback = !isIndexerConfigured();
+  const storageCount = fullStorage.length > 0 ? fullStorage.length : (info?.instanceStorage ?? []).length;
 
   return (
     <div>
@@ -59,7 +66,10 @@ export default async function ContractPage({ params }: Props) {
         )}
 
         <section>
-          <h2 className="text-lg font-semibold mb-3">Storage</h2>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            Storage
+            <SectionCount count={storageCount} />
+          </h2>
           <ContractStorageView
             contractId={contractId}
             instanceStorage={info.instanceStorage ?? []}
@@ -68,23 +78,30 @@ export default async function ContractPage({ params }: Props) {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            Recent Invocations
-            <LiveBadge />
-          </h2>
           <LiveInvocationHistory
             contractId={contractId}
-            initialItems={invocations}
-            derivedFromEvents={!isIndexerConfigured()}
-          />
+            initialItems={invocationsPage.items}
+            initialNextCursor={invocationsPage.nextCursor}
+            limit={INVOCATIONS_LIMIT}
+            derivedFromEvents={rpcFallback}
+            title="Recent Invocations"
+          >
+            <LiveBadge />
+          </LiveInvocationHistory>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            Events
+          <LiveEventLog
+            contractId={contractId}
+            initialEvents={eventsPage.items}
+            initialNextCursor={eventsPage.nextCursor}
+            limit={EVENTS_LIMIT}
+            rpcFallback={rpcFallback}
+            specs={wasm?.events}
+            title="Events"
+          >
             <LiveBadge />
-          </h2>
-          <LiveEventLog contractId={contractId} initialEvents={events} specs={wasm?.events} />
+          </LiveEventLog>
         </section>
       </div>
     </div>
