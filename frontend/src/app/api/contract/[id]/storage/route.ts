@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { lookupStorageEntry, parseStorageKeyInput, type StorageKeyKind } from "@/lib/soroban";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitRequest } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,7 @@ interface Params { params: { id: string } }
 const VALID_KINDS: StorageKeyKind[] = ["symbol", "string", "u32", "address"];
 
 export async function GET(req: Request, { params }: Params) {
-  const limited = rateLimit(req, { scope: "contract-storage" });
+  const limited = rateLimitRequest(req, { scope: "contract-storage" });
   if (limited) return limited;
 
   const searchParams = new URL(req.url).searchParams;

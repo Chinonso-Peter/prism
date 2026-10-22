@@ -115,20 +115,59 @@ export async function getFullStorageEntries(contractId: string): Promise<Storage
   }));
 }
 
+/**
+ * Cache of parsed WASM ABI results keyed by the WASM hash (hex string). A
+ * WASM with a given hash is immutable on-chain, so the parsed result never
+ * changes. The cache is bounded to 200 entries; the oldest entry is evicted
+ * when the cap is reached.
+ */
+const wasmAbiCache = new Map<string, ContractWasmInfo>();
+const WASM_CACHE_MAX = 200;
+
+/** Fetch WASM bytecode size and best-effort parse its embedded ABI (contract spec), if any. */
 export async function getContractWasmInfo(contractId: string): Promise<ContractWasmInfo | null> {
   try {
+    // Read the WASM hash from the contract instance entry first so we can
+    // serve a cache hit without downloading the bytecode at all.
+    const info = await getContractInfo(contractId);
+    if (info?.wasmHash && wasmAbiCache.has(info.wasmHash)) {
+      return wasmAbiCache.get(info.wasmHash)!;
+    }
+
     const wasm = await server().getContractWasmByContractId(contractId);
-    return {
+    const result: ContractWasmInfo = {
       size: wasm.length,
       functions: parseContractSpec(wasm),
       events: parseContractEvents(wasm),
       types: parseContractTypes(wasm),
     };
+
+    if (info?.wasmHash) {
+      if (wasmAbiCache.size >= WASM_CACHE_MAX) {
+        // Evict the oldest entry (Map preserves insertion order).
+        const firstKey = wasmAbiCache.keys().next().value;
+        if (firstKey !== undefined) wasmAbiCache.delete(firstKey);
+      }
+      wasmAbiCache.set(info.wasmHash, result);
+    }
+
+    return result;
   } catch {
     return null;
   }
 }
 
+/** Exported for testing only — clears the in-memory WASM ABI cache. */
+export function _clearWasmAbiCacheForTesting(): void {
+  wasmAbiCache.clear();
+}
+
+/**
+ * Fetch recent events emitted by a contract. Uses the indexer's full
+ * (forward-only, since-launch) history when one is configured
+ * (DATABASE_URL set); otherwise falls back to the RPC node's retention
+ * window (public nodes typically retain ~24h) — not full history.
+ */
 export async function getContractEvents(contractId: string, limit = 50): Promise<ContractEvent[]> {
   if (isIndexerConfigured()) {
     const indexed = await getIndexedEvents(contractId, limit);
