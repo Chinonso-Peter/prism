@@ -4,6 +4,8 @@ import { nativeToScVal, rpc, StrKey } from "@stellar/stellar-sdk";
 vi.mock("./indexed-db", () => ({
   isIndexerConfigured: vi.fn(),
   getIndexedEvents: vi.fn(),
+  getIndexedContract: vi.fn().mockResolvedValue(null),
+  getIndexedInvocationReturnValue: vi.fn().mockResolvedValue(null),
   getIndexedInvocations: vi.fn(),
   getIndexedStorageEntries: vi.fn(),
 }));
@@ -13,10 +15,13 @@ import {
   getContractEventsPage,
   getContractInfo,
   getInvocationHistory,
+  getInvocationReturnValue,
   simulateInvocation,
 } from "./soroban";
 import {
+  getIndexedContract,
   getIndexedEvents,
+  getIndexedInvocationReturnValue,
   getIndexedInvocations,
   isIndexerConfigured,
 } from "./indexed-db";
@@ -72,6 +77,44 @@ describe("getContractInfo", () => {
   it("returns null when the RPC request fails", async () => {
     vi.spyOn(rpc.Server.prototype, "getContractData").mockRejectedValue(new Error("RPC down"));
     await expect(getContractInfo("contract-id")).resolves.toBeNull();
+  });
+
+  it("includes indexed deployment information", async () => {
+    vi.mocked(isIndexerConfigured).mockReturnValue(true);
+    vi.mocked(getIndexedContract).mockResolvedValue({
+      creator: "GCREATOR",
+      deploymentLedger: 88,
+    });
+    vi.spyOn(rpc.Server.prototype, "getContractData").mockResolvedValue({
+      val: {
+        contractData: () => ({
+          val: () => ({
+            instance: () => ({
+              executable: () => ({
+                switch: () => ({ name: "contractExecutableWasm" }),
+                wasmHash: () => Buffer.alloc(32, 1),
+              }),
+              storage: () => [],
+            }),
+          }),
+        }),
+      },
+    } as never);
+
+    await expect(getContractInfo("contract-id")).resolves.toMatchObject({
+      creator: "GCREATOR",
+      deploymentLedger: 88,
+    });
+  });
+});
+
+describe("getInvocationReturnValue", () => {
+  it("uses the persisted return value without querying pruned RPC history", async () => {
+    vi.mocked(getIndexedInvocationReturnValue).mockResolvedValue("stored result");
+    const getTransaction = vi.spyOn(rpc.Server.prototype, "getTransaction");
+
+    await expect(getInvocationReturnValue("tx-hash")).resolves.toBe("stored result");
+    expect(getTransaction).not.toHaveBeenCalled();
   });
 });
 

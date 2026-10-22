@@ -56,6 +56,24 @@ export async function getIndexedInvocations(
   };
 }
 
+export interface IndexedContract {
+  creator: string;
+  deploymentLedger: number;
+}
+
+export async function getIndexedContract(contractId: string): Promise<IndexedContract | null> {
+  if (!isIndexerConfigured()) return null;
+  const { rows } = await getPool().query(
+    `SELECT creator, "deploymentLedger" FROM "Contract" WHERE "contractId" = $1`,
+    [contractId]
+  );
+  if (!rows[0]) return null;
+  return {
+    creator: rows[0].creator,
+    deploymentLedger: rows[0].deploymentLedger,
+  };
+}
+
 export interface IndexedEvent {
   eventId: string;
   type: string;

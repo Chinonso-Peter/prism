@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getContractWasmInfo, simulateInvocation } from "@/lib/soroban";
 import { coerceArgInput } from "@/lib/xdr";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitRequest } from "@/lib/rate-limit";
+import type { ContractTypeDef } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,14 @@ interface Params { params: { id: string } }
 interface SimulateBody {
   functionName?: string;
   args?: { value: string; type: string }[];
+  /**
+   * Optional contract type definitions (structs, unions, enums) used to
+   * coerce structured arguments correctly — the same path the UI takes via
+   * the server action. When omitted, Prism fetches the types from the WASM
+   * (using the cached result when available) so API callers get the same
+   * coercion quality as the UI without having to supply the types themselves.
+   */
+  types?: ContractTypeDef[];
 }
 
 /**
@@ -38,7 +47,7 @@ async function readCappedBody(req: Request, maxBytes: number): Promise<string | 
 }
 
 export async function POST(req: Request, { params }: Params) {
-  const limited = rateLimit(req, { scope: "contract-simulate", max: 10 });
+  const limited = rateLimitRequest(req, { scope: "contract-simulate", max: 10 });
   if (limited) return limited;
 
   const raw = await readCappedBody(req, MAX_BODY_BYTES);

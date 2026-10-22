@@ -1,4 +1,4 @@
-import { Address, rpc, xdr } from "@stellar/stellar-sdk";
+import { Account, Address, BASE_FEE, Contract, Keypair, Networks, TransactionBuilder, rpc, xdr } from "@stellar/stellar-sdk";
 import type {
   ContractEvent,
   ContractInfo,
@@ -25,14 +25,8 @@ function server(): rpc.Server {
   return _server;
 }
 
-/**
- * Fetch a contract's instance entry: executable info + instance storage.
- * This is always derivable from just the contract ID via a single RPC call.
- * Arbitrary persistent/temporary storage keys are NOT enumerable this way —
- * Soroban RPC has no "list all storage for a contract" method, only
- * lookups by known key (see lookupStorageEntry).
- */
 export async function getContractInfo(contractId: string): Promise<ContractInfo | null> {
+  let info: ContractInfo;
   try {
     const entry = await server().getContractData(
       contractId,
@@ -47,25 +41,30 @@ export async function getContractInfo(contractId: string): Promise<ContractInfo 
       value: scValToDisplay(e.val()),
       durability: "instance" as const,
     }));
-    return {
+    info = {
       executable: isWasm ? "wasm" : "stellar_asset",
       wasmHash: isWasm ? executable.wasmHash().toString("hex") : undefined,
       liveUntilLedgerSeq: entry.liveUntilLedgerSeq,
       lastModifiedLedgerSeq: entry.lastModifiedLedgerSeq,
       instanceStorage,
+      assetDetails: !isWasm && (assetDetails.name || assetDetails.symbol || assetDetails.decimals !== undefined) 
+        ? assetDetails 
+        : undefined,
     };
   } catch {
     return null;
   }
+
+  const indexed = await getIndexedContract(contractId);
+  return {
+    ...info,
+    creator: indexed?.creator,
+    deploymentLedger: indexed?.deploymentLedger,
+  };
 }
 
 export type StorageKeyKind = "symbol" | "string" | "u32" | "address";
 
-/**
- * Build the ScVal key for a persistent/temporary storage lookup from user input.
- * There is no way to enumerate arbitrary storage keys via RPC — the caller
- * must already know the key (its type and value) they're looking for.
- */
 export function parseStorageKeyInput(raw: string, kind: StorageKeyKind): xdr.ScVal {
   switch (kind) {
     case "symbol":
@@ -100,13 +99,6 @@ export async function lookupStorageEntry(
   }
 }
 
-/**
- * Every storage entry the indexer has observed for this contract, at its
- * latest known value — real enumeration of persistent/temporary/instance
- * keys, which plain RPC access cannot do at all (no such method exists).
- * Empty when no indexer is configured, or for keys never touched since it
- * started (forward-only — no historical backfill).
- */
 export async function getFullStorageEntries(contractId: string): Promise<StorageEntry[]> {
   if (!isIndexerConfigured()) return [];
   const indexed = await getIndexedStorageEntries(contractId);
@@ -117,19 +109,51 @@ export async function getFullStorageEntries(contractId: string): Promise<Storage
   }));
 }
 
+/**
+ * Cache of parsed WASM ABI results keyed by the WASM hash (hex string). A
+ * WASM with a given hash is immutable on-chain, so the parsed result never
+ * changes. The cache is bounded to 200 entries; the oldest entry is evicted
+ * when the cap is reached.
+ */
+const wasmAbiCache = new Map<string, ContractWasmInfo>();
+const WASM_CACHE_MAX = 200;
+
 /** Fetch WASM bytecode size and best-effort parse its embedded ABI (contract spec), if any. */
 export async function getContractWasmInfo(contractId: string): Promise<ContractWasmInfo | null> {
   try {
+    // Read the WASM hash from the contract instance entry first so we can
+    // serve a cache hit without downloading the bytecode at all.
+    const info = await getContractInfo(contractId);
+    if (info?.wasmHash && wasmAbiCache.has(info.wasmHash)) {
+      return wasmAbiCache.get(info.wasmHash)!;
+    }
+
     const wasm = await server().getContractWasmByContractId(contractId);
-    return {
+    const result: ContractWasmInfo = {
       size: wasm.length,
       functions: parseContractSpec(wasm),
       events: parseContractEvents(wasm),
       types: parseContractTypes(wasm),
     };
+
+    if (info?.wasmHash) {
+      if (wasmAbiCache.size >= WASM_CACHE_MAX) {
+        // Evict the oldest entry (Map preserves insertion order).
+        const firstKey = wasmAbiCache.keys().next().value;
+        if (firstKey !== undefined) wasmAbiCache.delete(firstKey);
+      }
+      wasmAbiCache.set(info.wasmHash, result);
+    }
+
+    return result;
   } catch {
     return null;
   }
+}
+
+/** Exported for testing only — clears the in-memory WASM ABI cache. */
+export function _clearWasmAbiCacheForTesting(): void {
+  wasmAbiCache.clear();
 }
 
 /**
@@ -198,15 +222,6 @@ async function getContractEventsFromRpc(contractId: string, limit: number): Prom
   }
 }
 
-/**
- * A contract's invocation history. Uses the indexer's full (forward-only)
- * history when configured. Otherwise, derives a proxy from recent events:
- * each event names the transaction that produced it, so we resolve the
- * unique set of recent transaction hashes and decode each one's invoked
- * function + args — contracts that never emit events won't show up here,
- * and coverage is bounded by the same RPC retention window as
- * getContractEvents.
- */
 export async function getInvocationHistory(contractId: string, limit = 20): Promise<InvocationHistoryItem[]> {
   return (await getInvocationHistoryPage(contractId, { limit })).items;
 }
@@ -238,38 +253,41 @@ async function getInvocationHistoryFromRpc(contractId: string, limit: number): P
   const events = await getContractEventsFromRpc(contractId, 200);
   const txHashes = Array.from(new Set(events.map((e) => e.txHash))).slice(0, limit);
 
-  const items = await Promise.all(
-    txHashes.map(async (txHash): Promise<InvocationHistoryItem | null> => {
-      try {
-        const res = await server().getTransaction(txHash);
-        if (res.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return null;
-        const invocation = decodeInvocation(res.envelopeXdr);
-        return {
-          txHash,
-          ledger: res.ledger,
-          timestamp: new Date(res.createdAt * 1000).toISOString(),
-          functionName: invocation?.functionName,
-          args: invocation?.args,
-          successful: res.status === rpc.Api.GetTransactionStatus.SUCCESS,
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
+  const CONCURRENCY = 4;
+  const items: (InvocationHistoryItem | null)[] = [];
+  for (let i = 0; i < txHashes.length; i += CONCURRENCY) {
+    const batch = txHashes.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (txHash): Promise<InvocationHistoryItem | null> => {
+        try {
+          const res = await server().getTransaction(txHash);
+          if (res.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return null;
+          const invocation = decodeInvocation(res.envelopeXdr);
+          return {
+            txHash,
+            ledger: res.ledger,
+            timestamp: new Date(res.createdAt * 1000).toISOString(),
+            functionName: invocation?.functionName,
+            args: invocation?.args,
+            successful: res.status === rpc.Api.GetTransactionStatus.SUCCESS,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    items.push(...results);
+  }
 
   return items
     .filter((i): i is InvocationHistoryItem => i !== null)
     .sort((a, b) => b.ledger - a.ledger);
 }
 
-/**
- * Best-effort fetch of a Soroban invocation's return value, for a
- * transaction the RPC node still has in its retention window. Returns
- * null for older transactions Horizon can still show but the RPC node
- * has already pruned.
- */
 export async function getInvocationReturnValue(txHash: string): Promise<string | null> {
+  const indexed = await getIndexedInvocationReturnValue(txHash);
+  if (indexed !== null) return indexed;
+
   try {
     const res = await server().getTransaction(txHash);
     if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) return null;
@@ -287,7 +305,6 @@ export interface NetworkActivityItem {
   timestamp: string;
 }
 
-/** Recent contract events across the whole network (not scoped to one contract) — real activity, for display purposes like a landing page feed. */
 export async function getRecentNetworkActivity(limit = 5): Promise<NetworkActivityItem[]> {
   try {
     const s = server();
@@ -319,20 +336,12 @@ export interface SimulationResult {
   instructions?: number;
 }
 
-/**
- * Simulate a contract function call (read-only preview — no signing, no
- * submission, no funds at risk). Builds a throwaway unsigned transaction
- * against a fresh, never-funded keypair purely to run simulateTransaction —
- * simulation doesn't require the source account to actually exist.
- */
 export async function simulateInvocation(
   contractId: string,
   functionName: string,
   args: xdr.ScVal[]
 ): Promise<SimulationResult> {
-  const { Contract, TransactionBuilder, Account, BASE_FEE, Networks, Keypair } = await import(
-    "@stellar/stellar-sdk"
-  );
+
   try {
     const passphrases: Record<typeof config.network, string> = {
       mainnet: Networks.PUBLIC,

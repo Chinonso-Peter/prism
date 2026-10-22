@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 
 function mockFetchOnce(body: unknown, ok = true) {
   const fetchMock = vi.fn().mockResolvedValue({

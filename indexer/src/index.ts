@@ -1,12 +1,19 @@
 import { rpc, encodeMuxedAccountToAddress, type xdr } from "@stellar/stellar-sdk";
+import { pathToFileURL } from "node:url";
 import { prisma, getCursor, setCursor } from "./db.js";
-import { decodeInvocation, extractStorageChanges, extractEvents } from "./decode.js";
+import {
+  decodeContractCreation,
+  decodeInvocation,
+  extractEvents,
+  extractInvocationReturnValue,
+  extractStorageChanges,
+} from "./decode.js";
 
 const RPC_URL = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 5000);
-const PAGE_LIMIT = 50;
+export const PAGE_LIMIT = 50;
 
-const server = new rpc.Server(RPC_URL, { timeout: 10_000 });
+export const server = new rpc.Server(RPC_URL, { timeout: 10_000 });
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,9 +31,10 @@ function sourceAccountOf(envelope: xdr.TransactionEnvelope): string {
   }
 }
 
-async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<void> {
+export async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<void> {
   const createdAt = new Date(tx.createdAt * 1000);
   const invocation = decodeInvocation(tx.envelopeXdr);
+  const sourceAccount = sourceAccountOf(tx.envelopeXdr);
 
   if (invocation) {
     // skipDuplicates makes reprocessing a page after a crash-before-cursor-advance safe.
@@ -40,11 +48,31 @@ async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<void> {
           functionName: invocation.functionName,
           args: invocation.args as object,
           successful: tx.status === "SUCCESS",
-          sourceAccount: sourceAccountOf(tx.envelopeXdr),
+          sourceAccount,
+          returnValue:
+            tx.status === "SUCCESS" ? extractInvocationReturnValue(tx.resultMetaXdr) : null,
         },
       ],
       skipDuplicates: true,
     });
+  }
+
+  if (tx.status === "SUCCESS" && sourceAccount) {
+    const contract = decodeContractCreation(tx.envelopeXdr, tx.resultMetaXdr, sourceAccount);
+    if (contract) {
+      await prisma.contract.createMany({
+        data: [
+          {
+            contractId: contract.contractId,
+            creator: contract.creator,
+            deploymentLedger: tx.ledger,
+            deploymentTxHash: tx.txHash,
+            createdAt,
+          },
+        ],
+        skipDuplicates: true,
+      });
+    }
   }
 
   const changes = extractStorageChanges(tx.resultMetaXdr);
@@ -90,11 +118,17 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
-/** Process one page of transactions starting after `cursor`. Returns the new cursor. */
-async function pollOnce(cursor: number, latestLedger: number): Promise<number> {
+/** Process one transaction page starting from the persisted ledger and RPC pagination cursor. */
+async function pollOnce(
+  cursor: number,
+  paginationCursor: string | null,
+  latestLedger: number
+): Promise<{ lastLedger: number; paginationCursor: string | null }> {
   let res;
   try {
-    res = await server.getTransactions({ startLedger: cursor + 1, pagination: { limit: PAGE_LIMIT } });
+    res = paginationCursor
+      ? await server.getTransactions({ pagination: { limit: PAGE_LIMIT, cursor: paginationCursor } })
+      : await server.getTransactions({ startLedger: cursor + 1, pagination: { limit: PAGE_LIMIT } });
   } catch (err) {
     const message = errorMessage(err);
 
@@ -109,43 +143,48 @@ async function pollOnce(cursor: number, latestLedger: number): Promise<number> {
         `[indexer] ledger ${cursor + 1} is before the RPC node's retention window (oldest: ${oldestMatch[1]}) — ` +
           `skipping ahead to ${latestLedger}. Some history in the gap was missed.`
       );
-      return latestLedger;
+      return { lastLedger: latestLedger, paginationCursor: null };
     }
     if (latestMatch && Number(latestMatch[1]) < cursor + 1) {
-      return cursor;
+      return { lastLedger: cursor, paginationCursor };
     }
     throw err;
   }
 
   for (const tx of res.transactions) {
-    try {
-      await processTransaction(tx);
-    } catch (err) {
-      console.error(`[indexer] failed to process tx ${tx.txHash} at ledger ${tx.ledger}:`, err);
-    }
+    await processTransaction(tx);
   }
 
-  if (res.transactions.length === 0) return latestLedger;
-  return Math.max(...res.transactions.map((t) => t.ledger));
+  if (res.transactions.length === 0) return { lastLedger: latestLedger, paginationCursor: null };
+  if (res.transactions.length === PAGE_LIMIT && (!res.cursor || res.cursor === paginationCursor)) {
+    throw new Error("RPC returned a full page without advancing its transaction cursor");
+  }
+  return {
+    lastLedger: Math.max(cursor, ...res.transactions.map((t) => t.ledger)),
+    paginationCursor: res.transactions.length === PAGE_LIMIT ? res.cursor : null,
+  };
 }
 
 async function main(): Promise<void> {
   const latest = await server.getLatestLedger();
-  let cursor = await getCursor(latest.sequence);
+  const initialCursor = await getCursor(latest.sequence);
+  let cursor = initialCursor.lastLedger;
+  let paginationCursor = initialCursor.paginationCursor;
   console.log(`[indexer] starting at ledger ${cursor} (network is at ${latest.sequence})`);
 
   while (true) {
     let caughtUp = true;
     try {
       const latestNow = await server.getLatestLedger();
-      if (cursor < latestNow.sequence) {
-        const newCursor = await pollOnce(cursor, latestNow.sequence);
-        if (newCursor !== cursor) {
-          cursor = newCursor;
-          await setCursor(cursor);
+      if (cursor < latestNow.sequence || paginationCursor) {
+        const progress = await pollOnce(cursor, paginationCursor, latestNow.sequence);
+        if (progress.lastLedger !== cursor || progress.paginationCursor !== paginationCursor) {
+          cursor = progress.lastLedger;
+          paginationCursor = progress.paginationCursor;
+          await setCursor(cursor, paginationCursor);
           console.log(`[indexer] processed through ledger ${cursor}`);
         }
-        caughtUp = cursor >= latestNow.sequence;
+        caughtUp = cursor >= latestNow.sequence && !paginationCursor;
       }
     } catch (err) {
       console.error("[indexer] poll error:", err);
@@ -154,7 +193,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error("[indexer] fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(async (err) => {
+    console.error("[indexer] fatal error:", err);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
+}

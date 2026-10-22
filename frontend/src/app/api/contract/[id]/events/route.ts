@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 interface Params { params: { id: string } }
 
 export async function GET(req: Request, { params }: Params) {
-  const limited = rateLimit(req, { scope: "contract-events" });
+  const limited = rateLimitRequest(req, { scope: "contract-events" });
   if (limited) return limited;
 
   const request = parsePageRequest(new URL(req.url), 50);

@@ -24,9 +24,12 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof HorizonError && error.status === 404;
 }
 
-async function get<T>(path: string): Promise<T> {
+const REVALIDATE_SHORT = 10;
+const REVALIDATE_FINALIZED = 300;
+
+async function get<T>(path: string, revalidate = REVALIDATE_SHORT): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    next: { revalidate: 10 },
+    next: { revalidate },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
@@ -116,12 +119,12 @@ export async function getLatestLedger(): Promise<LedgerRecord> {
 }
 
 export async function getLedger(sequence: number): Promise<LedgerRecord> {
-  const data = await get<HorizonLedger>(`/ledgers/${sequence}`);
+  const data = await get<HorizonLedger>(`/ledgers/${sequence}`, REVALIDATE_FINALIZED);
   return mapLedger(data);
 }
 
 export async function getTransaction(hash: string): Promise<TransactionRecord> {
-  const data = await get<HorizonTransaction>(`/transactions/${hash}`);
+  const data = await get<HorizonTransaction>(`/transactions/${hash}`, REVALIDATE_FINALIZED);
   return mapTransaction(data);
 }
 
