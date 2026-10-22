@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 interface Props { params: { seq: string } }
 
 export default async function LedgerPage({ params }: Props) {
+  if (!/^\d+$/.test(params.seq)) notFound();
   const seq = parseInt(params.seq, 10);
-  if (isNaN(seq)) notFound();
+  if (seq > 4_294_967_295) notFound();
 
   let ledger;
   try {

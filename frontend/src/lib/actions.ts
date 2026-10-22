@@ -31,8 +31,13 @@ export async function lookupStorageKeyAction(
  * machinery stays out of the client bundle, matching how the rest of Prism's
  * decoding works.
  */
+const XDR_INPUT_LIMIT = 64 * 1024; // 64 KB of base64
+
 export async function decodeXdrAction(input: string): Promise<XdrDecodeResult | { error: string }> {
   if (!input.trim()) return { error: "Paste some base64 XDR to decode." };
+  if (input.length > XDR_INPUT_LIMIT) {
+    return { error: `Input too large — maximum is ${XDR_INPUT_LIMIT / 1024} KB of base64.` };
+  }
   const result = decodeAnyXdr(input);
   return (
     result ?? {
