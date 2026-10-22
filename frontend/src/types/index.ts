@@ -26,6 +26,8 @@ export interface AccountBalance {
   assetType: string;
   assetCode?: string;
   assetIssuer?: string;
+  /** Set only for liquidity pool shares, which have no asset code. */
+  liquidityPoolId?: string;
   balance: string;
 }
 
@@ -43,14 +45,6 @@ export interface AccountRecord {
   };
   balances: AccountBalance[];
   signerCount: number;
-}
-
-export interface ContractRecord {
-  id: string;
-  wasmHash: string;
-  createdAt: string;
-  creator: string;
-  invocationCount?: number;
 }
 
 export interface ContractEvent {
@@ -114,6 +108,11 @@ export interface SorobanInvocation {
   contractId: string;
   functionName: string;
   args: string[];
+}
+
+/** A contract call taken from one operation of a transaction. */
+export interface OperationInvocation extends SorobanInvocation {
+  operationIndex: number;
 }
 
 export interface ResourceUsage {

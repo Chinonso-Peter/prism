@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ContractEvent, ContractEventSpec } from "@/types";
-import { shortHash, timeAgo } from "@/lib/format";
+import { shortHash } from "@/lib/format";
 import { labelEventData, labelEventTopics, matchEventSpec } from "@/lib/event-spec";
+import RelativeTime from "@/components/RelativeTime";
+import EmptyState from "@/components/EmptyState";
 
 interface Props {
   events: ContractEvent[];
@@ -42,9 +44,9 @@ function linkifyAddresses(text: string): React.ReactNode {
 export default function EventLog({ events, specs = [] }: Props) {
   if (events.length === 0) {
     return (
-      <p className="text-prism-muted text-sm">
+      <EmptyState>
         No events emitted by this contract in the last ~24h (the RPC node&apos;s retention window).
-      </p>
+      </EmptyState>
     );
   }
 
@@ -75,11 +77,13 @@ export default function EventLog({ events, specs = [] }: Props) {
               <div className="flex items-center gap-3 shrink-0">
                 <Link
                   href={`/tx/${e.txHash}`}
-                  className="text-xs text-prism-muted hover:text-white transition font-mono"
+                  className="text-xs text-prism-muted hover:text-prism-strong transition font-mono"
                 >
                   {shortHash(e.txHash, 4)}
                 </Link>
-                <span className="text-xs text-prism-muted">{timeAgo(e.timestamp)}</span>
+                <span className="text-xs text-prism-muted">
+                  <RelativeTime iso={e.timestamp} />
+                </span>
               </div>
             </div>
 
@@ -92,7 +96,7 @@ export default function EventLog({ events, specs = [] }: Props) {
                         {field.name}
                         <span className="opacity-60"> ({field.type})</span>
                       </dt>
-                      <dd className="font-mono text-white break-all">{linkifyAddresses(field.value)}</dd>
+                      <dd className="font-mono text-prism-strong break-all">{field.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -100,7 +104,7 @@ export default function EventLog({ events, specs = [] }: Props) {
             ) : (
               e.topic.length > 0 && (
                 <p className="text-xs text-prism-muted mb-1">
-                  Topic: <span className="font-mono text-white">{linkifyAddresses(e.topic.join(", "))}</span>
+                  Topic: <span className="font-mono text-prism-strong">{e.topic.join(", ")}</span>
                 </p>
               )
             )}
@@ -113,7 +117,7 @@ export default function EventLog({ events, specs = [] }: Props) {
                       {field.name}
                       <span className="opacity-60"> ({field.type})</span>
                     </dt>
-                    <dd className="font-mono text-white break-all">{linkifyAddresses(field.value)}</dd>
+                    <dd className="font-mono text-prism-strong break-all">{field.value}</dd>
                   </div>
                 ))}
               </dl>

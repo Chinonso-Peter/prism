@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import { getContractInfo, getContractWasmInfo, getContractEvents, getInvocationHistory, getFullStorageEntries } from "@/lib/soroban";
+import { isIndexerConfigured } from "@/lib/indexed-db";
 import ContractOverview from "@/components/ContractOverview";
 import ContractStorageView from "@/components/ContractStorageView";
 import LiveInvocationHistory from "@/components/LiveInvocationHistory";
@@ -10,11 +12,26 @@ export const dynamic = "force-dynamic";
 
 interface Props { params: { id: string } }
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const contractId = params.id;
+  const info = await getContractInfo(contractId);
+  const title = `Contract ${contractId}`;
+  const description = info
+    ? `Contract ${contractId} on Stellar Soroban — executable: ${info.executable}.`
+    : `Contract ${contractId} on Stellar Soroban.`;
+  return {
+    title,
+    description,
+    openGraph: { title, description },
+    twitter: { title, description },
+  };
+}
+
 export default async function ContractPage({ params }: Props) {
   const contractId = params.id;
   const info = await getContractInfo(contractId);
   const [wasm, events, invocations, fullStorage] = await Promise.all([
-    info?.executable === "wasm" ? getContractWasmInfo(contractId) : Promise.resolve(null),
+    info.executable === "wasm" ? getContractWasmInfo(contractId) : Promise.resolve(null),
     getContractEvents(contractId),
     getInvocationHistory(contractId),
     getFullStorageEntries(contractId),
@@ -45,7 +62,7 @@ export default async function ContractPage({ params }: Props) {
           <h2 className="text-lg font-semibold mb-3">Storage</h2>
           <ContractStorageView
             contractId={contractId}
-            instanceStorage={info?.instanceStorage ?? []}
+            instanceStorage={info.instanceStorage ?? []}
             fullStorage={fullStorage}
           />
         </section>
@@ -55,7 +72,11 @@ export default async function ContractPage({ params }: Props) {
             Recent Invocations
             <LiveBadge />
           </h2>
-          <LiveInvocationHistory contractId={contractId} initialItems={invocations} />
+          <LiveInvocationHistory
+            contractId={contractId}
+            initialItems={invocations}
+            derivedFromEvents={!isIndexerConfigured()}
+          />
         </section>
 
         <section>

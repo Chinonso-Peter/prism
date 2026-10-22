@@ -1,3 +1,4 @@
+import ExpandableValue from "./ExpandableValue";
 import StorageLookup from "./StorageLookup";
 import type { StorageEntry } from "@/types";
 
@@ -28,7 +29,7 @@ export default function ContractStorageView({ contractId, instanceStorage, fullS
                   <tr key={i} className="border-b border-prism-border last:border-0">
                     <td className="px-4 py-3 font-mono text-xs text-prism-accent">{e.durability}</td>
                     <td className="px-4 py-3 font-mono text-xs">{e.key}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-prism-muted break-all">{e.value}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-prism-muted"><ExpandableValue value={e.value} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -36,7 +37,7 @@ export default function ContractStorageView({ contractId, instanceStorage, fullS
           </div>
         </div>
       ) : instanceStorage.length === 0 ? (
-        <p className="text-prism-muted text-sm">No instance storage entries found for this contract.</p>
+        <EmptyState>No instance storage entries found for this contract.</EmptyState>
       ) : (
         <div className="rounded-xl border border-prism-border overflow-hidden">
           <table className="w-full text-sm">
@@ -50,7 +51,7 @@ export default function ContractStorageView({ contractId, instanceStorage, fullS
               {instanceStorage.map((e, i) => (
                 <tr key={i} className="border-b border-prism-border last:border-0">
                   <td className="px-4 py-3 font-mono text-xs">{e.key}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-prism-muted break-all">{e.value}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-prism-muted"><ExpandableValue value={e.value} /></td>
                 </tr>
               ))}
             </tbody>

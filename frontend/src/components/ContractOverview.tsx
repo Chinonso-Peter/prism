@@ -1,36 +1,29 @@
 import type { ContractInfo, ContractWasmInfo } from "@/types";
 import { formatNumber } from "@/lib/format";
+import DetailRow from "@/components/DetailRow";
+import ErrorState from "@/components/ErrorState";
 
 interface Props { info: ContractInfo | null; wasm: ContractWasmInfo | null }
 
 export default function ContractOverview({ info, wasm }: Props) {
   if (!info) {
     return (
-      <p className="text-prism-muted text-sm">
+      <ErrorState>
         Couldn&apos;t load this contract — double-check the ID, or the RPC endpoint may be unreachable.
-      </p>
+      </ErrorState>
     );
   }
 
   return (
     <div className="rounded-xl border border-prism-border bg-prism-surface p-6 space-y-4">
-      <Row label="Executable" value={info.executable === "wasm" ? "WASM contract" : "Stellar Asset Contract"} />
-      {info.assetDetails && (
-        <>
-          {info.assetDetails.name && <Row label="Asset Name" value={info.assetDetails.name} />}
-          {info.assetDetails.symbol && <Row label="Asset Symbol" value={info.assetDetails.symbol} />}
-          {info.assetDetails.decimals !== undefined && (
-            <Row label="Decimals" value={String(info.assetDetails.decimals)} />
-          )}
-        </>
-      )}
-      {info.wasmHash && <Row label="WASM Hash" value={info.wasmHash} mono />}
-      {wasm && <Row label="WASM Size" value={`${formatNumber(wasm.size)} bytes`} />}
+      <DetailRow label="Executable" value={info.executable === "wasm" ? "WASM contract" : "Stellar Asset Contract"} />
+      {info.wasmHash && <DetailRow label="WASM Hash" value={info.wasmHash} mono />}
+      {wasm && <DetailRow label="WASM Size" value={`${formatNumber(wasm.size)} bytes`} />}
       {info.liveUntilLedgerSeq !== undefined && (
-        <Row label="Live Until Ledger" value={`#${formatNumber(info.liveUntilLedgerSeq)}`} />
+        <DetailRow label="Live Until Ledger" value={`#${formatNumber(info.liveUntilLedgerSeq)}`} />
       )}
       {info.lastModifiedLedgerSeq !== undefined && (
-        <Row label="Last Modified Ledger" value={`#${formatNumber(info.lastModifiedLedgerSeq)}`} />
+        <DetailRow label="Last Modified Ledger" value={`#${formatNumber(info.lastModifiedLedgerSeq)}`} />
       )}
 
       {wasm && wasm.functions.length > 0 && (
@@ -79,11 +72,11 @@ export default function ContractOverview({ info, wasm }: Props) {
                         {event.name}
                       </td>
                       <td className="px-3 py-2 font-mono text-prism-muted">
-                        <span className="text-white">topics</span> [{topics.join(", ")}]
+                        <span className="text-prism-strong">topics</span> [{topics.join(", ")}]
                         {data.length > 0 && (
                           <>
                             {" "}
-                            <span className="text-white">data</span>
+                            <span className="text-prism-strong">data</span>
                             <span className="opacity-60"> ({event.dataFormat})</span> [
                             {data.join(", ")}]
                           </>
@@ -133,15 +126,6 @@ export default function ContractOverview({ info, wasm }: Props) {
           No embedded ABI found for this contract — not every contract includes one.
         </p>
       )}
-    </div>
-  );
-}
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex justify-between border-b border-prism-border pb-3 last:border-0 last:pb-0 gap-4">
-      <span className="text-prism-muted text-sm shrink-0">{label}</span>
-      <span className={`text-sm text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
