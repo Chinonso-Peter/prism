@@ -14,7 +14,14 @@ import {
   scValToDisplay,
 } from "./xdr";
 import { config } from "./config";
-import { isIndexerConfigured, getIndexedInvocations, getIndexedEvents, getIndexedStorageEntries } from "./indexed-db";
+import {
+  getIndexedContract,
+  getIndexedEvents,
+  getIndexedInvocationReturnValue,
+  getIndexedInvocations,
+  getIndexedStorageEntries,
+  isIndexerConfigured,
+} from "./indexed-db";
 
 const RPC_URL = config.sorobanRpcUrl;
 
@@ -25,6 +32,7 @@ function server(): rpc.Server {
 }
 
 export async function getContractInfo(contractId: string): Promise<ContractInfo | null> {
+  let info: ContractInfo;
   try {
     const entry = await server().getContractData(
       contractId,
@@ -39,20 +47,7 @@ export async function getContractInfo(contractId: string): Promise<ContractInfo 
       value: scValToDisplay(e.val()),
       durability: "instance" as const,
     }));
-
-    const assetDetails: { name?: string; symbol?: string; decimals?: number } = {};
-    if (!isWasm) {
-      for (const entry of instanceStorage) {
-        if (entry.key === "name") assetDetails.name = entry.value;
-        if (entry.key === "symbol") assetDetails.symbol = entry.value;
-        if (entry.key === "decimals") {
-          const dec = Number(entry.value);
-          if (!isNaN(dec)) assetDetails.decimals = dec;
-        }
-      }
-    }
-
-    return {
+    info = {
       executable: isWasm ? "wasm" : "stellar_asset",
       wasmHash: isWasm ? executable.wasmHash().toString("hex") : undefined,
       liveUntilLedgerSeq: entry.liveUntilLedgerSeq,
@@ -65,6 +60,13 @@ export async function getContractInfo(contractId: string): Promise<ContractInfo 
   } catch {
     return null;
   }
+
+  const indexed = await getIndexedContract(contractId);
+  return {
+    ...info,
+    creator: indexed?.creator,
+    deploymentLedger: indexed?.deploymentLedger,
+  };
 }
 
 export type StorageKeyKind = "symbol" | "string" | "u32" | "address";
@@ -213,6 +215,9 @@ export async function getInvocationHistory(contractId: string, limit = 20): Prom
 }
 
 export async function getInvocationReturnValue(txHash: string): Promise<string | null> {
+  const indexed = await getIndexedInvocationReturnValue(txHash);
+  if (indexed !== null) return indexed;
+
   try {
     const res = await server().getTransaction(txHash);
     if (res.status !== rpc.Api.GetTransactionStatus.SUCCESS) return null;

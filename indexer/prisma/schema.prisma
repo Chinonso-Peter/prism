@@ -11,9 +11,20 @@ datasource db {
 // Forward-only: on first run this is seeded to the current latest ledger,
 // not backfilled from history.
 model IndexerCursor {
-  id         Int      @id @default(1)
-  lastLedger Int
-  updatedAt  DateTime @updatedAt
+  id               Int      @id @default(1)
+  lastLedger       Int
+  paginationCursor String?
+  updatedAt        DateTime @updatedAt
+}
+
+model BackfillCursor {
+  id               Int      @id @default(1)
+  fromLedger       Int
+  toLedger         Int
+  lastLedger       Int
+  paginationCursor String?
+  completed        Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
 }
 
 model Invocation {
@@ -26,9 +37,20 @@ model Invocation {
   args          Json
   successful    Boolean
   sourceAccount String
+  returnValue   String?
 
   @@unique([txHash])
   @@index([contractId, ledger])
+}
+
+model Contract {
+  contractId       String   @id
+  creator          String
+  deploymentLedger Int
+  deploymentTxHash String   @unique
+  createdAt        DateTime
+
+  @@index([creator])
 }
 
 // One row per observed change to a contract storage entry (not just the
