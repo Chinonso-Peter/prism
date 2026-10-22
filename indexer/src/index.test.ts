@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backoffDelay, healthReport } from "./index.js";
+import { backoffDelay, commitPage, healthReport, seedLastLedger } from "./index.js";
 
 describe("backoffDelay", () => {
   it("doubles the delay for each consecutive failure", () => {
@@ -40,5 +40,90 @@ describe("healthReport", () => {
 
   it("never reports a negative lag", () => {
     expect(healthReport({ ...base, latestLedger: 90 }, 60)).toMatchObject({ healthy: true, lag: 0 });
+  });
+});
+
+describe("seedLastLedger", () => {
+  const network = { latestLedger: 500, oldestLedger: 400 };
+
+  it("seeds at the latest ledger when INDEXER_START_LEDGER is unset or blank", () => {
+    expect(seedLastLedger(undefined, network)).toBe(500);
+    expect(seedLastLedger("  ", network)).toBe(500);
+  });
+
+  it("seeds one below the start ledger, so the start ledger is the first one indexed", () => {
+    expect(seedLastLedger("450", network)).toBe(449);
+  });
+
+  it("accepts both edges of the retention window", () => {
+    expect(seedLastLedger("400", network)).toBe(399);
+    expect(seedLastLedger("500", network)).toBe(499);
+  });
+
+  it("rejects a start ledger outside the retention window", () => {
+    expect(() => seedLastLedger("399", network)).toThrow(/retention window/);
+    expect(() => seedLastLedger("501", network)).toThrow(/retention window/);
+  });
+
+  it("rejects values that are not positive integers", () => {
+    for (const raw of ["abc", "1.5", "0", "-3"]) {
+      expect(() => seedLastLedger(raw, network)).toThrow(/positive integer/);
+    }
+  });
+});
+
+describe("commitPage", () => {
+  type Client = Parameters<typeof commitPage>[2];
+
+  /**
+   * Fake client whose $transaction stages writes and applies them only when the
+   * callback resolves, mirroring a rollback on error. `failOn` injects a throw
+   * from the named table's write, after earlier writes in the same transaction.
+   */
+  function fakeClient(failOn?: "indexerCursor") {
+    const committed = {
+      gaps: [] as unknown[],
+      cursor: { lastLedger: 100, paginationCursor: null as string | null },
+    };
+    const client = {
+      $transaction: async (fn: (db: unknown) => Promise<void>) => {
+        const staged = { gaps: [] as unknown[], cursor: undefined as undefined | typeof committed.cursor };
+        const db = {
+          indexerGap: {
+            create: async ({ data }: { data: unknown }) => {
+              staged.gaps.push(data);
+            },
+          },
+          indexerCursor: {
+            upsert: async ({ update }: { update: typeof committed.cursor }) => {
+              if (failOn === "indexerCursor") throw new Error("injected failure");
+              staged.cursor = update;
+            },
+          },
+        };
+        await fn(db);
+        committed.gaps.push(...staged.gaps);
+        committed.cursor = staged.cursor ?? committed.cursor;
+      },
+    };
+    return { client: client as unknown as Client, committed };
+  }
+
+  it("applies the gap record and the cursor together", async () => {
+    const { client, committed } = fakeClient();
+    const gap = { fromLedger: 101, toLedger: 300, reason: "RPC retention" };
+    await commitPage([], { lastLedger: 300, paginationCursor: null, gap }, client);
+    expect(committed.gaps).toEqual([gap]);
+    expect(committed.cursor).toEqual({ lastLedger: 300, paginationCursor: null });
+  });
+
+  it("leaves no new rows and an unchanged cursor when a failure follows the inserts", async () => {
+    const { client, committed } = fakeClient("indexerCursor");
+    const gap = { fromLedger: 101, toLedger: 300, reason: "RPC retention" };
+    await expect(
+      commitPage([], { lastLedger: 300, paginationCursor: null, gap }, client)
+    ).rejects.toThrow("injected failure");
+    expect(committed.gaps).toEqual([]);
+    expect(committed.cursor).toEqual({ lastLedger: 100, paginationCursor: null });
   });
 });

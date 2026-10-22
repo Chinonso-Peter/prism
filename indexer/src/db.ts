@@ -1,20 +1,30 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 export const prisma = new PrismaClient();
+
+/** The shared client, or the client of an open transaction. */
+export type Db = Prisma.TransactionClient;
 
 export interface IndexerCursor {
   lastLedger: number;
   paginationCursor: string | null;
 }
 
-export async function getCursor(startLedger: number): Promise<IndexerCursor> {
-  const existing = await prisma.indexerCursor.findUnique({ where: { id: 1 } });
-  if (existing) return existing;
-  return prisma.indexerCursor.create({ data: { id: 1, lastLedger: startLedger } });
+export async function findCursor(): Promise<IndexerCursor | null> {
+  return prisma.indexerCursor.findUnique({ where: { id: 1 } });
 }
 
-export async function setCursor(ledger: number, paginationCursor: string | null): Promise<void> {
-  await prisma.indexerCursor.upsert({
+/** Create the cursor on a fresh database; `lastLedger` is the last ledger already treated as processed. */
+export async function seedCursor(lastLedger: number): Promise<IndexerCursor> {
+  return prisma.indexerCursor.create({ data: { id: 1, lastLedger } });
+}
+
+export async function setCursor(
+  ledger: number,
+  paginationCursor: string | null,
+  db: Db = prisma
+): Promise<void> {
+  await db.indexerCursor.upsert({
     where: { id: 1 },
     update: { lastLedger: ledger, paginationCursor },
     create: { id: 1, lastLedger: ledger, paginationCursor },

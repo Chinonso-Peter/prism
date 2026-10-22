@@ -42,10 +42,11 @@ docker compose up
 | `POLL_INTERVAL_MS`   | `5000`                               | Milliseconds between poll cycles     |
 | `HEALTH_PORT`        | `8080`                               | Port for the `GET /healthz` endpoint |
 | `HEALTH_MAX_LEDGER_LAG` | `60`                              | Ledgers behind the network before `/healthz` returns 503 |
+| `INDEXER_START_LEDGER` | *(latest ledger)*                  | First ledger to index on a fresh database; must be inside the RPC node's retention window. Ignored once a cursor exists |
 
 ## How It Works
 
-1. On first run, the live indexer seeds a cursor (`IndexerCursor`) at the current latest ledger. **No historical backfill is performed automatically.**
+1. On first run, the live indexer seeds a cursor (`IndexerCursor`) at the current latest ledger, or just before `INDEXER_START_LEDGER` if set. **No historical backfill is performed automatically.**
 2. Each poll cycle fetches new transactions from the RPC node, processes them in pages of 50, and advances the cursor.
 3. Both live indexing and backfill use RPC transaction cursors to safely paginate across pages, including pages that split a ledger.
 4. Processing is idempotent — `skipDuplicates` on insert means a crash-before-cursor-advance is safe to replay.
@@ -115,6 +116,15 @@ One row per contract event emitted.
 | `type`       | `String` | Event type                     |
 | `topic`      | `Json`   | Event topics                   |
 | `value`      | `String` | Event value (decoded)          |
+
+### `indexer_gaps`
+One row per ledger range the live indexer skipped without indexing, because the RPC node's retention window had already passed the cursor. Gaps apply to every contract. The frontend returns them as `historyGaps` from `GET /api/contract/{id}`.
+
+| Column        | Type     | Description                          |
+| ------------- | -------- | ------------------------------------ |
+| `fromLedger`  | `Int`    | First ledger skipped                 |
+| `toLedger`    | `Int`    | Last ledger skipped                  |
+| `reason`      | `String` | Why the range was skipped            |
 
 ## Failure Behaviour
 
