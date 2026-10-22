@@ -19,7 +19,6 @@ export interface TransactionRecord {
   successful: boolean;
   memo?: string;
   envelopeXdr: string;
-  /** Horizon's result XDR, which carries why a failed transaction failed. */
   resultXdr: string;
 }
 
@@ -65,7 +64,6 @@ export interface StorageEntry {
   durability: "persistent" | "temporary" | "instance";
 }
 
-/** Info derivable from a contract's instance ledger entry alone (always fetchable from just a contract ID). */
 export interface ContractInfo {
   executable: "wasm" | "stellar_asset";
   wasmHash?: string;
@@ -82,7 +80,6 @@ export interface ContractFunctionSpec {
   outputs: string[];
 }
 
-/** An event the contract declares in its spec, as emitted by #[contractevent]. */
 export interface ContractEventSpec {
   name: string;
   prefixTopics: string[];
@@ -91,7 +88,6 @@ export interface ContractEventSpec {
   doc?: string;
 }
 
-/** A struct, union or enum the contract defines in its own spec. */
 export type ContractTypeDef =
   | { kind: "struct"; name: string; doc?: string; fields: { name: string; type: string }[] }
   | { kind: "union"; name: string; doc?: string; cases: { name: string; types: string[] }[] }
@@ -101,13 +97,10 @@ export type ContractTypeDef =
 export interface ContractWasmInfo {
   size: number;
   functions: ContractFunctionSpec[];
-  /** Empty for contracts that publish events as loose tuples rather than declaring them. */
   events: ContractEventSpec[];
-  /** The contract's own structs, unions and enums, named by its signatures. */
   types: ContractTypeDef[];
 }
 
-/** A Soroban invocation decoded from a transaction's InvokeHostFunction operation. */
 export interface SorobanInvocation {
   contractId: string;
   functionName: string;
@@ -126,8 +119,6 @@ export interface ResourceUsage {
   resourceFeeStroops: string;
 }
 
-/** One entry in a contract's recent activity, derived from its emitted events
- *  (bounded by the RPC node's retention window — not full history). */
 export interface InvocationHistoryItem {
   txHash: string;
   ledger: number;
