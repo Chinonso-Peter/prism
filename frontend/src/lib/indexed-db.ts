@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { takePage, type HistoryPage, type PageRequest } from "./history-cursor";
 
 let pool: Pool | undefined;
 
@@ -22,26 +23,37 @@ export interface IndexedInvocation {
   sourceAccount: string;
 }
 
-/** Full (unbounded) invocation history for a contract, since the indexer started. */
-export async function getIndexedInvocations(contractId: string, limit = 50): Promise<IndexedInvocation[]> {
-  if (!isIndexerConfigured()) return [];
+/**
+ * One page of a contract's invocation history since the indexer started, newest
+ * first. `before` continues from the cursor a previous page returned.
+ */
+export async function getIndexedInvocations(
+  contractId: string,
+  { limit, before }: PageRequest
+): Promise<HistoryPage<IndexedInvocation>> {
+  if (!isIndexerConfigured()) return { items: [], nextCursor: null };
   const { rows } = await getPool().query(
-    `SELECT "txHash", ledger, "createdAt", "functionName", args, successful, "sourceAccount"
+    `SELECT id, "txHash", ledger, "createdAt", "functionName", args, successful, "sourceAccount"
      FROM "Invocation"
      WHERE "contractId" = $1
-     ORDER BY ledger DESC
-     LIMIT $2`,
-    [contractId, limit]
+       AND ($2::int IS NULL OR (ledger, id) < ($2::int, $3::text))
+     ORDER BY ledger DESC, id DESC
+     LIMIT $4`,
+    [contractId, before?.ledger ?? null, before?.id ?? null, limit + 1]
   );
-  return rows.map((r) => ({
-    txHash: r.txHash,
-    ledger: r.ledger,
-    createdAt: r.createdAt.toISOString(),
-    functionName: r.functionName,
-    args: r.args,
-    successful: r.successful,
-    sourceAccount: r.sourceAccount,
-  }));
+  const page = takePage(rows, limit);
+  return {
+    items: page.rows.map((r) => ({
+      txHash: r.txHash,
+      ledger: r.ledger,
+      createdAt: r.createdAt.toISOString(),
+      functionName: r.functionName,
+      args: r.args,
+      successful: r.successful,
+      sourceAccount: r.sourceAccount,
+    })),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export interface IndexedEvent {
@@ -54,26 +66,37 @@ export interface IndexedEvent {
   createdAt: string;
 }
 
-/** Full (unbounded) event history for a contract, since the indexer started. */
-export async function getIndexedEvents(contractId: string, limit = 50): Promise<IndexedEvent[]> {
-  if (!isIndexerConfigured()) return [];
+/**
+ * One page of a contract's event history since the indexer started, newest
+ * first. `before` continues from the cursor a previous page returned.
+ */
+export async function getIndexedEvents(
+  contractId: string,
+  { limit, before }: PageRequest
+): Promise<HistoryPage<IndexedEvent>> {
+  if (!isIndexerConfigured()) return { items: [], nextCursor: null };
   const { rows } = await getPool().query(
-    `SELECT "eventId", type, topic, value, "txHash", ledger, "createdAt"
+    `SELECT id, "eventId", type, topic, value, "txHash", ledger, "createdAt"
      FROM "ContractEventRecord"
      WHERE "contractId" = $1
-     ORDER BY ledger DESC
-     LIMIT $2`,
-    [contractId, limit]
+       AND ($2::int IS NULL OR (ledger, id) < ($2::int, $3::text))
+     ORDER BY ledger DESC, id DESC
+     LIMIT $4`,
+    [contractId, before?.ledger ?? null, before?.id ?? null, limit + 1]
   );
-  return rows.map((r) => ({
-    eventId: r.eventId,
-    type: r.type,
-    topic: r.topic,
-    value: r.value,
-    txHash: r.txHash,
-    ledger: r.ledger,
-    createdAt: r.createdAt.toISOString(),
-  }));
+  const page = takePage(rows, limit);
+  return {
+    items: page.rows.map((r) => ({
+      eventId: r.eventId,
+      type: r.type,
+      topic: r.topic,
+      value: r.value,
+      txHash: r.txHash,
+      ledger: r.ledger,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export interface IndexedStorageEntry {
