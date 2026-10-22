@@ -17,4 +17,4 @@ RUN npm run build
 RUN addgroup -S -g 1001 app && adduser -S -u 1001 -G app app
 USER app
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/index.js"]
