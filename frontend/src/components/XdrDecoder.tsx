@@ -95,9 +95,10 @@ export default function XdrDecoder({ initialInput = "", initialResult = null }: 
                 </span>
                 <span className="text-xs text-prism-muted">detected type</span>
               </div>
-              {result.fields.length === 0 ? (
-                <p className="text-xs text-prism-muted italic">
-                  Recognized as {result.type}, but Prism couldn&apos;t summarize its contents.
+              {result.partial ? (
+                <p className="text-xs text-prism-red">
+                  Partially decoded: Prism recognized this as {result.type}, but couldn&apos;t read
+                  its fields, so none are shown.
                 </p>
               ) : (
                 <dl className="space-y-3">
