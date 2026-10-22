@@ -7,8 +7,38 @@ import EmptyState from "@/components/EmptyState";
 
 interface Props {
   events: ContractEvent[];
-  /** Event declarations from the contract's spec, when it has any. */
   specs?: ContractEventSpec[];
+}
+
+function linkifyAddresses(text: string): React.ReactNode {
+  const addressPattern = /\b([GC][A-Z2-7]{55})\b/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = addressPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    const address = match[1];
+    const isContract = address.startsWith("C");
+    parts.push(
+      <Link
+        key={match.index}
+        href={isContract ? `/contract/${address}` : `/account/${address}`}
+        className="text-prism-accent hover:underline"
+      >
+        {address}
+      </Link>
+    );
+    lastIndex = match.index + address.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
 }
 
 export default function EventLog({ events, specs = [] }: Props) {
@@ -23,13 +53,8 @@ export default function EventLog({ events, specs = [] }: Props) {
   return (
     <div className="space-y-3">
       {events.map((e) => {
-        // A contract that declares its events lets us name this one and label
-        // its topics; one that publishes loose tuples doesn't, so fall back to
-        // the raw topic list rather than guessing at names.
         const spec = matchEventSpec(e.topic, specs);
         const labelled = spec ? labelEventTopics(e.topic, spec) : [];
-        // Null when the payload doesn't match what the declaration promises —
-        // better to show it raw than to attach the wrong name to a value.
         const data = spec ? labelEventData(e.value, spec) : null;
 
         return (
@@ -97,7 +122,7 @@ export default function EventLog({ events, specs = [] }: Props) {
                 ))}
               </dl>
             ) : (
-              <p className="text-xs font-mono text-prism-muted break-all">{e.value}</p>
+              <p className="text-xs font-mono text-prism-muted break-all">{linkifyAddresses(e.value)}</p>
             )}
           </div>
         );
