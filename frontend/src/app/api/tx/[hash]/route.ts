@@ -3,14 +3,14 @@ import { xdr } from "@stellar/stellar-sdk";
 import { getTransaction } from "@/lib/horizon";
 import { getInvocationReturnValue } from "@/lib/soroban";
 import { decodeInvocation, getResourceUsage } from "@/lib/xdr";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitRequest } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 interface Params { params: { hash: string } }
 
 export async function GET(req: Request, { params }: Params) {
-  const limited = rateLimit(req, { scope: "tx" });
+  const limited = rateLimitRequest(req, { scope: "tx" });
   if (limited) return limited;
 
   let tx;

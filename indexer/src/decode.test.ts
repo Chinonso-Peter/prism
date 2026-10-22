@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { xdr } from "@stellar/stellar-sdk";
-import { scValToDisplay } from "./decode.js";
+import { extractInvocationReturnValue, scValToDisplay } from "./decode.js";
 
 describe("scValToDisplay", () => {
   it("decodes a symbol to a plain string", () => {
@@ -32,5 +32,43 @@ describe("scValToDisplay", () => {
     });
     const val = xdr.ScVal.scvContractInstance(instance);
     expect(scValToDisplay(val)).toBe("(contract instance)");
+  });
+});
+
+describe("extractInvocationReturnValue", () => {
+  it.each([3, 4])("reads a successful Soroban return value from metadata v%s", (version) => {
+    const returnValue = xdr.ScVal.scvSymbol("result");
+    const ext = new xdr.SorobanTransactionMetaExt(0);
+    const transactionMeta =
+      version === 3
+        ? new xdr.TransactionMeta(
+            3,
+            new xdr.TransactionMetaV3({
+              ext: new xdr.ExtensionPoint(0),
+              txChangesBefore: [],
+              operations: [],
+              txChangesAfter: [],
+              sorobanMeta: new xdr.SorobanTransactionMeta({
+                ext,
+                events: [],
+                returnValue,
+                diagnosticEvents: [],
+              }),
+            })
+          )
+        : new xdr.TransactionMeta(
+            4,
+            new xdr.TransactionMetaV4({
+              ext: new xdr.ExtensionPoint(0),
+              txChangesBefore: [],
+              operations: [],
+              txChangesAfter: [],
+              sorobanMeta: new xdr.SorobanTransactionMetaV2({ ext, returnValue }),
+              events: [],
+              diagnosticEvents: [],
+            })
+          );
+
+    expect(extractInvocationReturnValue(transactionMeta)).toBe("result");
   });
 });

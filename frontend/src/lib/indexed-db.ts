@@ -22,6 +22,15 @@ export interface IndexedInvocation {
   sourceAccount: string;
 }
 
+export async function getIndexedInvocationReturnValue(txHash: string): Promise<string | null> {
+  if (!isIndexerConfigured()) return null;
+  const { rows } = await getPool().query(
+    `SELECT "returnValue" FROM "Invocation" WHERE "txHash" = $1`,
+    [txHash]
+  );
+  return rows[0]?.returnValue ?? null;
+}
+
 /** Full (unbounded) invocation history for a contract, since the indexer started. */
 export async function getIndexedInvocations(contractId: string, limit = 50): Promise<IndexedInvocation[]> {
   if (!isIndexerConfigured()) return [];
@@ -42,6 +51,24 @@ export async function getIndexedInvocations(contractId: string, limit = 50): Pro
     successful: r.successful,
     sourceAccount: r.sourceAccount,
   }));
+}
+
+export interface IndexedContract {
+  creator: string;
+  deploymentLedger: number;
+}
+
+export async function getIndexedContract(contractId: string): Promise<IndexedContract | null> {
+  if (!isIndexerConfigured()) return null;
+  const { rows } = await getPool().query(
+    `SELECT creator, "deploymentLedger" FROM "Contract" WHERE "contractId" = $1`,
+    [contractId]
+  );
+  if (!rows[0]) return null;
+  return {
+    creator: rows[0].creator,
+    deploymentLedger: rows[0].deploymentLedger,
+  };
 }
 
 export interface IndexedEvent {

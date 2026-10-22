@@ -1,6 +1,6 @@
 # Prism Indexer
 
-An optional, forward-only indexer that polls Soroban RPC and persists contract invocations, storage changes, and events into PostgreSQL. It removes the RPC node's ~24-hour retention limit and enables full storage-key enumeration — neither of which is possible with plain RPC access.
+An optional indexer that polls Soroban RPC and persists contract deployments, invocations (including successful return values), storage changes, and events into PostgreSQL. It removes the RPC node's ~24-hour retention limit and enables full storage-key enumeration — neither of which is possible with plain RPC access.
 
 ## Quick Start
 
@@ -19,6 +19,14 @@ npm run prisma:migrate
 npm run dev
 ```
 
+To index a historical ledger range, run:
+
+```bash
+npm run backfill -- --from 1000 --to 2000
+```
+
+The backfill uses the same transaction processor as live indexing. Its progress is checkpointed in PostgreSQL after each RPC page, so rerunning the same range resumes safely after an interruption. Inserts are idempotent; a different range cannot replace an incomplete backfill. After a range is complete, a new range may be started. The requested end ledger must be available from the configured RPC node.
+
 Or run everything together with Docker Compose from the repository root:
 
 ```bash
@@ -35,13 +43,14 @@ docker compose up
 
 ## How It Works
 
-1. On first run, the indexer seeds a cursor (`IndexerCursor`) at the current latest ledger. **No historical backfill is performed.**
+1. On first run, the live indexer seeds a cursor (`IndexerCursor`) at the current latest ledger. **No historical backfill is performed automatically.**
 2. Each poll cycle fetches new transactions from the RPC node, processes them in pages of 50, and advances the cursor.
-3. Processing is idempotent — `skipDuplicates` on insert means a crash-before-cursor-advance is safe to replay.
+3. Both live indexing and backfill use RPC transaction cursors to safely paginate across pages, including pages that split a ledger.
+4. Processing is idempotent — `skipDuplicates` on insert means a crash-before-cursor-advance is safe to replay.
 
 ### Cursor Model
 
-The cursor is a single row (`id = 1`) tracking the last fully-processed ledger. It is **forward-only**: the indexer never revisits ledgers before its start point. If you need historical data, you must have been running the indexer at the time.
+The live cursor is a single row (`id = 1`) tracking the last processed ledger and RPC page position. Live indexing remains forward-only; use the backfill command to load historical ranges. Backfill progress is tracked independently in `BackfillCursor`, allowing it to coexist with the live cursor.
 
 ## Tables
 
@@ -50,7 +59,8 @@ Singleton row (id always 1) tracking how far the indexer has processed.
 
 | Column      | Type     | Description                    |
 | ----------- | -------- | ------------------------------ |
-| `lastLedger` | `Int`   | Last fully-processed ledger    |
+| `lastLedger` | `Int`   | Last processed ledger          |
+| `paginationCursor` | `String?` | RPC page position when a ledger has more transactions |
 | `updatedAt`  | `DateTime` | Last cursor advance time     |
 
 ### `invocations`
@@ -65,6 +75,20 @@ One row per Soroban contract function invocation.
 | `args`         | `Json`    | Decoded arguments                     |
 | `successful`   | `Boolean` | Whether the invocation succeeded      |
 | `sourceAccount`| `String`  | Transaction source account            |
+| `returnValue`  | `String?` | Decoded return value for a successful invocation |
+
+### `contracts`
+One row per observed contract deployment.
+
+| Column             | Type     | Description                         |
+| ------------------ | -------- | ----------------------------------- |
+| `contractId`       | `String` | Deployed contract address           |
+| `creator`          | `String` | Transaction source account          |
+| `deploymentLedger` | `Int`    | Ledger sequence of the deployment   |
+| `deploymentTxHash` | `String` | Transaction that deployed the contract |
+
+### `backfill_cursor`
+Singleton row tracking the active (or most recently completed) fixed-range backfill, including its RPC pagination cursor.
 
 ### `storage_changes`
 Append-only log of every observed change to a contract storage entry. The "current value" for a key is its most recent non-removed row — this is what makes full key enumeration possible.
@@ -98,7 +122,7 @@ One row per contract event emitted.
 
 ## Retention Gap
 
-Because the indexer is forward-only, it only has data from the ledger at which it started. For contracts that existed before the indexer ran, invocation and event history will be incomplete. Storage changes observed after the indexer started are complete.
+Live indexing starts at the ledger current on first launch. Historical data can be loaded separately with the backfill command, subject to the configured RPC node's available history. Data outside the live start point and any completed backfill ranges remains unindexed.
 
 ## Running Tests
 
