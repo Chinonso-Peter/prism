@@ -1,7 +1,7 @@
 import { rpc, encodeMuxedAccountToAddress, type xdr } from "@stellar/stellar-sdk";
 import { createServer, type Server } from "node:http";
 import { pathToFileURL } from "node:url";
-import { prisma, getCursor, setCursor } from "./db.js";
+import { prisma, findCursor, seedCursor, setCursor, type Db } from "./db.js";
 import {
   decodeContractCreation,
   decodeInvocation,
@@ -57,6 +57,29 @@ export function healthReport(snapshot: HealthSnapshot, maxLag: number) {
   return { healthy, ...snapshot, lag };
 }
 
+/**
+ * The last-processed ledger to seed a fresh cursor with. Without INDEXER_START_LEDGER
+ * that is the network's latest ledger. With it, indexing begins at that ledger, which
+ * must lie inside the RPC node's retention window or the poll would hit the gap branch.
+ */
+export function seedLastLedger(
+  raw: string | undefined,
+  network: { latestLedger: number; oldestLedger: number }
+): number {
+  if (raw === undefined || raw.trim() === "") return network.latestLedger;
+  const start = Number(raw);
+  if (!Number.isSafeInteger(start) || start < 1) {
+    throw new Error(`INDEXER_START_LEDGER must be a positive integer, got "${raw}"`);
+  }
+  if (start < network.oldestLedger || start > network.latestLedger) {
+    throw new Error(
+      `INDEXER_START_LEDGER ${start} is outside the RPC node's retention window ` +
+        `(ledgers ${network.oldestLedger}-${network.latestLedger})`
+    );
+  }
+  return start - 1;
+}
+
 const health: HealthSnapshot = { cursor: 0, latestLedger: 0, lastPollFailed: false };
 
 function startHealthServer(): Server {
@@ -93,14 +116,14 @@ function sourceAccountOf(envelope: xdr.TransactionEnvelope): string {
   }
 }
 
-export async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<void> {
+export async function processTransaction(tx: rpc.Api.TransactionInfo, db: Db = prisma): Promise<void> {
   const createdAt = new Date(tx.createdAt * 1000);
   const invocation = decodeInvocation(tx.envelopeXdr);
   const sourceAccount = sourceAccountOf(tx.envelopeXdr);
 
   if (invocation) {
     // skipDuplicates makes reprocessing a page after a crash-before-cursor-advance safe.
-    await prisma.invocation.createMany({
+    await db.invocation.createMany({
       data: [
         {
           txHash: tx.txHash,
@@ -122,7 +145,7 @@ export async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<v
   if (tx.status === "SUCCESS" && sourceAccount) {
     const contract = decodeContractCreation(tx.envelopeXdr, tx.resultMetaXdr, sourceAccount);
     if (contract) {
-      await prisma.contract.createMany({
+      await db.contract.createMany({
         data: [
           {
             contractId: contract.contractId,
@@ -139,7 +162,7 @@ export async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<v
 
   const changes = extractStorageChanges(tx.resultMetaXdr);
   if (changes.length > 0) {
-    await prisma.storageChange.createMany({
+    await db.storageChange.createMany({
       skipDuplicates: true,
       data: changes.map((c) => ({
         contractId: c.contractId,
@@ -156,7 +179,7 @@ export async function processTransaction(tx: rpc.Api.TransactionInfo): Promise<v
 
   const events = extractEvents(tx.resultMetaXdr, tx.txHash);
   if (events.length > 0) {
-    await prisma.contractEventRecord.createMany({
+    await db.contractEventRecord.createMany({
       skipDuplicates: true,
       data: events.map((e) => ({
         eventId: e.eventId,
@@ -180,12 +203,19 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
-/** Process one transaction page starting from the persisted ledger and RPC pagination cursor. */
-async function pollOnce(
+/** Where a page leaves the cursor, plus any ledger range the page skipped without indexing. */
+export interface PageProgress {
+  lastLedger: number;
+  paginationCursor: string | null;
+  gap?: { fromLedger: number; toLedger: number; reason: string };
+}
+
+/** Fetch one transaction page from the persisted ledger and RPC pagination cursor. Writes nothing. */
+async function fetchPage(
   cursor: number,
   paginationCursor: string | null,
   latestLedger: number
-): Promise<{ lastLedger: number; paginationCursor: string | null }> {
+): Promise<{ transactions: rpc.Api.TransactionInfo[]; progress: PageProgress }> {
   let res;
   try {
     res = paginationCursor
@@ -205,36 +235,78 @@ async function pollOnce(
         `[indexer] ledger ${cursor + 1} is before the RPC node's retention window (oldest: ${oldestMatch[1]}) — ` +
           `skipping ahead to ${latestLedger}. Some history in the gap was missed.`
       );
-      return { lastLedger: latestLedger, paginationCursor: null };
+      return {
+        transactions: [],
+        progress: {
+          lastLedger: latestLedger,
+          paginationCursor: null,
+          gap: {
+            fromLedger: cursor + 1,
+            toLedger: latestLedger,
+            reason: `RPC retention: the node's oldest ledger is ${oldestMatch[1]}`,
+          },
+        },
+      };
     }
     if (latestMatch && Number(latestMatch[1]) < cursor + 1) {
-      return { lastLedger: cursor, paginationCursor };
+      return { transactions: [], progress: { lastLedger: cursor, paginationCursor } };
     }
     throw err;
   }
 
-  for (const tx of res.transactions) {
-    await processTransaction(tx);
+  if (res.transactions.length === 0) {
+    return { transactions: [], progress: { lastLedger: latestLedger, paginationCursor: null } };
   }
-
-  if (res.transactions.length === 0) return { lastLedger: latestLedger, paginationCursor: null };
   if (res.transactions.length === PAGE_LIMIT && (!res.cursor || res.cursor === paginationCursor)) {
     throw new Error("RPC returned a full page without advancing its transaction cursor");
   }
   return {
-    lastLedger: Math.max(cursor, ...res.transactions.map((t) => t.ledger)),
-    paginationCursor: res.transactions.length === PAGE_LIMIT ? res.cursor : null,
+    transactions: res.transactions,
+    progress: {
+      lastLedger: Math.max(cursor, ...res.transactions.map((t) => t.ledger)),
+      paginationCursor: res.transactions.length === PAGE_LIMIT ? res.cursor : null,
+    },
   };
 }
 
+/**
+ * Apply one page, its gap record, and its cursor in a single transaction, so the page
+ * lands fully or not at all. A failure leaves no new rows and the old cursor in place.
+ */
+export async function commitPage(
+  transactions: rpc.Api.TransactionInfo[],
+  progress: PageProgress,
+  client: Pick<typeof prisma, "$transaction"> = prisma
+): Promise<void> {
+  await client.$transaction(
+    async (db) => {
+      for (const tx of transactions) {
+        await processTransaction(tx, db);
+      }
+      if (progress.gap) {
+        await db.indexerGap.create({ data: progress.gap });
+      }
+      await setCursor(progress.lastLedger, progress.paginationCursor, db);
+    },
+    { timeout: 30_000 }
+  );
+}
+
 async function main(): Promise<void> {
-  const latest = await server.getLatestLedger();
-  const initialCursor = await getCursor(latest.sequence);
+  const network = await server.getHealth();
+  const existing = await findCursor();
+  if (existing && process.env.INDEXER_START_LEDGER) {
+    console.warn(
+      `[indexer] INDEXER_START_LEDGER is ignored: the cursor already exists at ledger ${existing.lastLedger}`
+    );
+  }
+  const initialCursor =
+    existing ?? (await seedCursor(seedLastLedger(process.env.INDEXER_START_LEDGER, network)));
   let cursor = initialCursor.lastLedger;
   let paginationCursor = initialCursor.paginationCursor;
   health.cursor = cursor;
-  health.latestLedger = latest.sequence;
-  console.log(`[indexer] starting at ledger ${cursor} (network is at ${latest.sequence})`);
+  health.latestLedger = network.latestLedger;
+  console.log(`[indexer] starting at ledger ${cursor} (network is at ${network.latestLedger})`);
 
   const healthServer = startHealthServer();
   process.once("SIGTERM", requestShutdown);
@@ -250,11 +322,16 @@ async function main(): Promise<void> {
 
       let caughtUp = true;
       if (cursor < latestNow.sequence || paginationCursor) {
-        const progress = await pollOnce(cursor, paginationCursor, latestNow.sequence);
-        if (progress.lastLedger !== cursor || progress.paginationCursor !== paginationCursor) {
+        const page = await fetchPage(cursor, paginationCursor, latestNow.sequence);
+        const { progress } = page;
+        if (
+          page.transactions.length > 0 ||
+          progress.lastLedger !== cursor ||
+          progress.paginationCursor !== paginationCursor
+        ) {
+          await commitPage(page.transactions, progress);
           cursor = progress.lastLedger;
           paginationCursor = progress.paginationCursor;
-          await setCursor(cursor, paginationCursor);
           health.cursor = cursor;
           console.log(`[indexer] processed through ledger ${cursor}`);
         }

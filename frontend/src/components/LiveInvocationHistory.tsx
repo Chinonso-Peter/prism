@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import InvocationHistory from "./InvocationHistory";
+import SectionHeader from "./SectionHeader";
+import { INVOCATION_PAGE_SIZE } from "@/lib/contract-lists";
 import type { InvocationHistoryItem } from "@/types";
 
 interface Props {
@@ -34,5 +36,10 @@ export default function LiveInvocationHistory({
     return () => clearInterval(id);
   }, [contractId, intervalMs]);
 
-  return <InvocationHistory items={items} derivedFromEvents={derivedFromEvents} />;
+  return (
+    <>
+      <SectionHeader title="Recent Invocations" count={items.length} cap={INVOCATION_PAGE_SIZE} live />
+      <InvocationHistory items={items} derivedFromEvents={derivedFromEvents} />
+    </>
+  );
 }

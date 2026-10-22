@@ -15,6 +15,7 @@ import {
 } from "./xdr";
 import { config } from "./config";
 import type { HistoryPage, PageRequest } from "./history-cursor";
+import { EVENT_PAGE_SIZE, INVOCATION_PAGE_SIZE } from "./contract-lists";
 import { isIndexerConfigured, getIndexedInvocations, getIndexedEvents, getIndexedStorageEntries } from "./indexed-db";
 
 const RPC_URL = config.sorobanRpcUrl;
@@ -162,7 +163,7 @@ export function _clearWasmAbiCacheForTesting(): void {
  * (DATABASE_URL set); otherwise falls back to the RPC node's retention
  * window (public nodes typically retain ~24h) — not full history.
  */
-export async function getContractEvents(contractId: string, limit = 50): Promise<ContractEvent[]> {
+export async function getContractEvents(contractId: string, limit = EVENT_PAGE_SIZE): Promise<ContractEvent[]> {
   return (await getContractEventsPage(contractId, { limit })).items;
 }
 
@@ -222,7 +223,10 @@ async function getContractEventsFromRpc(contractId: string, limit: number): Prom
   }
 }
 
-export async function getInvocationHistory(contractId: string, limit = 20): Promise<InvocationHistoryItem[]> {
+export async function getInvocationHistory(
+  contractId: string,
+  limit = INVOCATION_PAGE_SIZE
+): Promise<InvocationHistoryItem[]> {
   return (await getInvocationHistoryPage(contractId, { limit })).items;
 }
 

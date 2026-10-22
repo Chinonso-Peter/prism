@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import EventLog from "./EventLog";
+import SectionHeader from "./SectionHeader";
+import { EVENT_PAGE_SIZE } from "@/lib/contract-lists";
 import type { ContractEvent, ContractEventSpec } from "@/types";
 
 interface Props {
@@ -34,5 +36,10 @@ export default function LiveEventLog({
     return () => clearInterval(id);
   }, [contractId, intervalMs]);
 
-  return <EventLog events={events} specs={specs} />;
+  return (
+    <>
+      <SectionHeader title="Events" count={events.length} cap={EVENT_PAGE_SIZE} live />
+      <EventLog events={events} specs={specs} />
+    </>
+  );
 }
