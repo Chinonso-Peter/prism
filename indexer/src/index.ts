@@ -1,4 +1,5 @@
 import { rpc, encodeMuxedAccountToAddress, type xdr } from "@stellar/stellar-sdk";
+import { createServer, type Server } from "node:http";
 import { pathToFileURL } from "node:url";
 import { prisma, getCursor, setCursor } from "./db.js";
 import {
@@ -11,12 +12,73 @@ import {
 
 const RPC_URL = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 5000);
+const HEALTH_PORT = Number(process.env.HEALTH_PORT ?? 8080);
+const MAX_LEDGER_LAG = Number(process.env.HEALTH_MAX_LEDGER_LAG ?? 60);
+const BACKOFF_BASE_MS = 1_000;
+const BACKOFF_MAX_MS = 60_000;
 export const PAGE_LIMIT = 50;
 
 export const server = new rpc.Server(RPC_URL, { timeout: 10_000 });
 
+let stopping = false;
+let wakeFromSleep = (): void => {};
+
+/** Sleep that a shutdown signal can cut short. */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    wakeFromSleep = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+  });
+}
+
+/**
+ * Delay before the next poll after `failures` consecutive failures: exponential
+ * from BACKOFF_BASE_MS, capped at BACKOFF_MAX_MS. Equal jitter draws each delay
+ * from the upper half of its step, so the range keeps growing with each failure.
+ */
+export function backoffDelay(failures: number, random: () => number = Math.random): number {
+  const step = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (failures - 1));
+  return Math.round(step / 2 + random() * (step / 2));
+}
+
+export interface HealthSnapshot {
+  cursor: number;
+  latestLedger: number;
+  lastPollFailed: boolean;
+}
+
+/** Unhealthy when the last poll failed or the cursor trails the network by more than maxLag ledgers. */
+export function healthReport(snapshot: HealthSnapshot, maxLag: number) {
+  const lag = Math.max(0, snapshot.latestLedger - snapshot.cursor);
+  const healthy = !snapshot.lastPollFailed && lag <= maxLag;
+  return { healthy, ...snapshot, lag };
+}
+
+const health: HealthSnapshot = { cursor: 0, latestLedger: 0, lastPollFailed: false };
+
+function startHealthServer(): Server {
+  const httpServer = createServer((req, res) => {
+    if (req.method !== "GET" || req.url?.split("?")[0] !== "/healthz") {
+      res.writeHead(404).end();
+      return;
+    }
+    const report = healthReport(health, MAX_LEDGER_LAG);
+    res.writeHead(report.healthy ? 200 : 503, { "content-type": "application/json" });
+    res.end(JSON.stringify(report));
+  });
+  httpServer.listen(HEALTH_PORT, () => {
+    console.log(`[indexer] health endpoint listening on port ${HEALTH_PORT} (GET /healthz)`);
+  });
+  return httpServer;
+}
+
+function requestShutdown(signal: NodeJS.Signals): void {
+  console.log(`[indexer] ${signal} received, stopping after the current page`);
+  stopping = true;
+  wakeFromSleep();
 }
 
 function sourceAccountOf(envelope: xdr.TransactionEnvelope): string {
@@ -170,27 +232,54 @@ async function main(): Promise<void> {
   const initialCursor = await getCursor(latest.sequence);
   let cursor = initialCursor.lastLedger;
   let paginationCursor = initialCursor.paginationCursor;
+  health.cursor = cursor;
+  health.latestLedger = latest.sequence;
   console.log(`[indexer] starting at ledger ${cursor} (network is at ${latest.sequence})`);
 
-  while (true) {
-    let caughtUp = true;
+  const healthServer = startHealthServer();
+  process.once("SIGTERM", requestShutdown);
+  process.once("SIGINT", requestShutdown);
+
+  let consecutiveFailures = 0;
+  while (!stopping) {
+    let delayMs = 0;
     try {
       const latestNow = await server.getLatestLedger();
+      health.latestLedger = latestNow.sequence;
+      if (stopping) break;
+
+      let caughtUp = true;
       if (cursor < latestNow.sequence || paginationCursor) {
         const progress = await pollOnce(cursor, paginationCursor, latestNow.sequence);
         if (progress.lastLedger !== cursor || progress.paginationCursor !== paginationCursor) {
           cursor = progress.lastLedger;
           paginationCursor = progress.paginationCursor;
           await setCursor(cursor, paginationCursor);
+          health.cursor = cursor;
           console.log(`[indexer] processed through ledger ${cursor}`);
         }
         caughtUp = cursor >= latestNow.sequence && !paginationCursor;
       }
+      consecutiveFailures = 0;
+      health.lastPollFailed = false;
+      delayMs = caughtUp ? POLL_INTERVAL_MS : 0;
     } catch (err) {
-      console.error("[indexer] poll error:", err);
+      consecutiveFailures++;
+      health.lastPollFailed = true;
+      delayMs = backoffDelay(consecutiveFailures);
+      console.error(
+        `[indexer] poll error (failure ${consecutiveFailures}), retrying in ${delayMs}ms:`,
+        err
+      );
     }
-    if (caughtUp) await sleep(POLL_INTERVAL_MS);
+    if (!stopping) await sleep(delayMs);
   }
+
+  console.log("[indexer] shutting down");
+  await setCursor(cursor, paginationCursor);
+  healthServer.close();
+  await prisma.$disconnect();
+  process.exit(0);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -40,6 +40,8 @@ docker compose up
 | `DATABASE_URL`       | *(required)*                         | PostgreSQL connection string         |
 | `SOROBAN_RPC_URL`    | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint to poll        |
 | `POLL_INTERVAL_MS`   | `5000`                               | Milliseconds between poll cycles     |
+| `HEALTH_PORT`        | `8080`                               | Port for the `GET /healthz` endpoint |
+| `HEALTH_MAX_LEDGER_LAG` | `60`                              | Ledgers behind the network before `/healthz` returns 503 |
 
 ## How It Works
 
@@ -117,8 +119,19 @@ One row per contract event emitted.
 ## Failure Behaviour
 
 - **Crash before cursor advance**: Safe. The next run reprocesses the same page; `skipDuplicates` prevents double-inserts.
-- **RPC unreachable**: The indexer retries on the next poll cycle. No data is lost — the cursor only advances after successful processing.
+- **RPC unreachable**: The indexer retries with exponential backoff and jitter (1s doubling to a 60s cap) and resets once a poll succeeds. No data is lost — the cursor only advances after successful processing.
 - **Database unreachable**: The indexer throws and exits. Restart after the database is available; the cursor is preserved.
+- **SIGTERM / SIGINT**: The indexer finishes the page it is processing, saves the cursor, disconnects Prisma, and exits. A second signal exits immediately.
+
+## Health Endpoint
+
+`GET /healthz` on `HEALTH_PORT` returns the indexer's state as JSON:
+
+```json
+{ "healthy": true, "cursor": 1234, "latestLedger": 1236, "lag": 2, "lastPollFailed": false }
+```
+
+It returns `200` when the last poll succeeded and `lag` (`latestLedger - cursor`) is at most `HEALTH_MAX_LEDGER_LAG`. Otherwise it returns `503`. The Compose file uses this endpoint for the indexer's healthcheck.
 
 ## Retention Gap
 

@@ -234,38 +234,52 @@ export interface DecodedEvent {
 
 /**
  * Extract contract-type events (skips system/diagnostic) from a transaction's
- * per-operation meta. Only TransactionMetaV4's OperationMetaV2 carries
- * per-operation events — V3's OperationMeta doesn't have them at all, so
- * older-format transactions (rare on a current network) are skipped here;
- * they're still covered by extractStorageChanges/decodeInvocation.
+ * meta. V4 carries events per operation; V3 carries them once on the
+ * transaction's Soroban meta. A Soroban transaction has exactly one operation,
+ * so V3's events are attributed to operation 0.
  */
 export function extractEvents(meta: xdr.TransactionMeta, txHash: string): DecodedEvent[] {
-  if (meta.switch() !== 4) return [];
-  const v = meta.v4();
+  const switchValue = meta.switch();
+  if (switchValue === 3) {
+    const events = meta.v3().sorobanMeta()?.events() ?? [];
+    return events.flatMap((event, eventIndex) => decodeEvent(event, txHash, 0, eventIndex));
+  }
+  if (switchValue !== 4) return [];
 
   const out: DecodedEvent[] = [];
-  v.operations().forEach((opMeta, opIndex) => {
+  meta.v4().operations().forEach((opMeta, opIndex) => {
     opMeta.events().forEach((event, eventIndex) => {
-      if (event.type().name !== "contract") return;
-      // The generated type says Hash (Opaque[]) but js-xdr represents fixed
-      // opaque values as Buffer at runtime — same as elsewhere in this codebase.
-      let contractIdBuf: Buffer | null;
-      try {
-        contractIdBuf = event.contractId() as unknown as Buffer | null;
-      } catch {
-        return;
-      }
-      if (!contractIdBuf) return;
-
-      const body = event.body().v0();
-      out.push({
-        eventId: `${txHash}-${opIndex}-${eventIndex}`,
-        contractId: StrKey.encodeContract(contractIdBuf),
-        type: event.type().name,
-        topic: body.topics().map(scValToDisplay),
-        value: scValToDisplay(body.data()),
-      });
+      out.push(...decodeEvent(event, txHash, opIndex, eventIndex));
     });
   });
   return out;
+}
+
+function decodeEvent(
+  event: xdr.ContractEvent,
+  txHash: string,
+  opIndex: number,
+  eventIndex: number
+): DecodedEvent[] {
+  if (event.type().name !== "contract") return [];
+  // The generated type says Hash (Opaque[]) but js-xdr represents fixed
+  // opaque values as Buffer at runtime — same as elsewhere in this codebase.
+  let contractIdBuf: Buffer | null;
+  try {
+    contractIdBuf = event.contractId() as unknown as Buffer | null;
+  } catch {
+    return [];
+  }
+  if (!contractIdBuf) return [];
+
+  const body = event.body().v0();
+  return [
+    {
+      eventId: `${txHash}-${opIndex}-${eventIndex}`,
+      contractId: StrKey.encodeContract(contractIdBuf),
+      type: event.type().name,
+      topic: body.topics().map(scValToDisplay),
+      value: scValToDisplay(body.data()),
+    },
+  ];
 }

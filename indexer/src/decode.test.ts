@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { xdr } from "@stellar/stellar-sdk";
-import { extractInvocationReturnValue, scValToDisplay } from "./decode.js";
+import { StrKey, xdr } from "@stellar/stellar-sdk";
+import { extractEvents, extractInvocationReturnValue, scValToDisplay } from "./decode.js";
 
 describe("scValToDisplay", () => {
   it("decodes a symbol to a plain string", () => {
@@ -70,5 +70,78 @@ describe("extractInvocationReturnValue", () => {
           );
 
     expect(extractInvocationReturnValue(transactionMeta)).toBe("result");
+  });
+});
+
+describe("extractEvents", () => {
+  const txHash = "ab".repeat(32);
+  const contractIdBytes = Buffer.alloc(32, 1);
+  const contractEvent = new xdr.ContractEvent({
+    ext: new xdr.ExtensionPoint(0),
+    // js-xdr takes a Buffer for the Hash-typed contract id at runtime (see decode.ts).
+    contractId: contractIdBytes as unknown as xdr.ContractId,
+    type: xdr.ContractEventType.contract(),
+    body: new xdr.ContractEventBody(
+      0,
+      new xdr.ContractEventV0({
+        topics: [xdr.ScVal.scvSymbol("transfer")],
+        data: xdr.ScVal.scvU32(7),
+      })
+    ),
+  });
+  const expected = [
+    {
+      eventId: `${txHash}-0-0`,
+      contractId: StrKey.encodeContract(contractIdBytes),
+      type: "contract",
+      topic: ["transfer"],
+      value: "7",
+    },
+  ];
+
+  it("reads Soroban events from transaction meta v3", () => {
+    const meta = new xdr.TransactionMeta(
+      3,
+      new xdr.TransactionMetaV3({
+        ext: new xdr.ExtensionPoint(0),
+        txChangesBefore: [],
+        operations: [],
+        txChangesAfter: [],
+        sorobanMeta: new xdr.SorobanTransactionMeta({
+          ext: new xdr.SorobanTransactionMetaExt(0),
+          events: [contractEvent],
+          returnValue: xdr.ScVal.scvVoid(),
+          diagnosticEvents: [],
+        }),
+      })
+    );
+
+    expect(extractEvents(meta, txHash)).toEqual(expected);
+  });
+
+  it("reads per-operation Soroban events from transaction meta v4", () => {
+    const meta = new xdr.TransactionMeta(
+      4,
+      new xdr.TransactionMetaV4({
+        ext: new xdr.ExtensionPoint(0),
+        txChangesBefore: [],
+        operations: [
+          new xdr.OperationMetaV2({
+            ext: new xdr.ExtensionPoint(0),
+            changes: [],
+            events: [contractEvent],
+          }),
+        ],
+        txChangesAfter: [],
+        sorobanMeta: new xdr.SorobanTransactionMetaV2({
+          ext: new xdr.SorobanTransactionMetaExt(0),
+          returnValue: xdr.ScVal.scvVoid(),
+        }),
+        events: [],
+        diagnosticEvents: [],
+      })
+    );
+
+    expect(extractEvents(meta, txHash)).toEqual(expected);
   });
 });
