@@ -1,16 +1,18 @@
+import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
 import LedgerStats from "@/components/LedgerStats";
 import TransactionCard from "@/components/TransactionCard";
 import AutoRefresh from "@/components/AutoRefresh";
 import EmptyState from "@/components/EmptyState";
 import { getLatestLedger, getRecentTransactions } from "@/lib/horizon";
-import type { TransactionRecord } from "@/types";
+import type { LedgerRecord, TransactionRecord } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  let ledger = null;
+  let ledger: LedgerRecord | null = null;
   let transactions: TransactionRecord[] = [];
+  let loadFailed = false;
 
   try {
     [ledger, transactions] = await Promise.all([
@@ -18,7 +20,8 @@ export default async function Home() {
       getRecentTransactions(10),
     ]);
   } catch {
-    // Network unavailable during build or runtime — render gracefully
+    // Horizon didn't answer. That is not the same as an empty network, so say so.
+    loadFailed = true;
   }
 
   return (
@@ -43,8 +46,18 @@ export default async function Home() {
             auto-updating
           </span>
         </h2>
-        {transactions.length === 0 ? (
-          <EmptyState>Connecting to Stellar network…</EmptyState>
+        {loadFailed ? (
+          <div role="alert" className="border border-prism-border rounded-lg p-4 text-sm">
+            <p className="font-medium mb-1">Couldn&apos;t reach the Stellar network</p>
+            <p className="text-prism-muted">
+              Horizon didn&apos;t answer, so the latest ledger and transactions aren&apos;t available.{" "}
+              <Link href="/explorer" className="underline hover:text-prism-strong">
+                Try again
+              </Link>
+            </p>
+          </div>
+        ) : transactions.length === 0 ? (
+          <EmptyState>No recent transactions.</EmptyState>
         ) : (
           <div className="space-y-2">
             {transactions.map((tx) => (
