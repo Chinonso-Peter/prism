@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import EventLog from "./EventLog";
-import SectionCount, { isCapped } from "./SectionCount";
+import SectionHeader from "./SectionHeader";
+import { EVENT_PAGE_SIZE } from "@/lib/contract-lists";
 import type { ContractEvent, ContractEventSpec } from "@/types";
 
 interface Props {
@@ -53,11 +54,7 @@ export default function LiveEventLog({
 
   return (
     <>
-      <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-        {title}
-        <SectionCount count={events.length} capped={isCapped(events.length, nextCursor, limit, rpcFallback)} />
-        {children}
-      </h2>
+      <SectionHeader title="Events" count={events.length} cap={EVENT_PAGE_SIZE} live />
       <EventLog events={events} specs={specs} />
     </>
   );

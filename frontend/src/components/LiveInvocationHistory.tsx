@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import InvocationHistory from "./InvocationHistory";
-import SectionCount, { isCapped } from "./SectionCount";
+import SectionHeader from "./SectionHeader";
+import { INVOCATION_PAGE_SIZE } from "@/lib/contract-lists";
 import type { InvocationHistoryItem } from "@/types";
 
 interface Props {
@@ -50,11 +51,7 @@ export default function LiveInvocationHistory({
 
   return (
     <>
-      <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-        {title}
-        <SectionCount count={items.length} capped={isCapped(items.length, nextCursor, limit, derivedFromEvents)} />
-        {children}
-      </h2>
+      <SectionHeader title="Recent Invocations" count={items.length} cap={INVOCATION_PAGE_SIZE} live />
       <InvocationHistory items={items} derivedFromEvents={derivedFromEvents} />
     </>
   );

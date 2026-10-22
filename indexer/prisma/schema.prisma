@@ -8,13 +8,25 @@ datasource db {
 }
 
 // Singleton row (id always 1) tracking how far the indexer has processed.
-// Forward-only: on first run this is seeded to the current latest ledger,
-// not backfilled from history.
+// Forward-only: on first run this is seeded to the current latest ledger
+// (or just before INDEXER_START_LEDGER), not backfilled from history.
 model IndexerCursor {
   id               Int      @id @default(1)
   lastLedger       Int
   paginationCursor String?
   updatedAt        DateTime @updatedAt
+}
+
+// A ledger range the live indexer skipped without indexing, and why. Gaps
+// apply to every contract, so they are not keyed by contract.
+model IndexerGap {
+  id         String   @id @default(cuid())
+  fromLedger Int
+  toLedger   Int
+  reason     String
+  createdAt  DateTime @default(now())
+
+  @@index([fromLedger])
 }
 
 model BackfillCursor {

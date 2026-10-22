@@ -149,3 +149,29 @@ export async function getIndexedStorageEntries(contractId: string): Promise<Inde
       ledger: r.ledger,
     }));
 }
+
+export interface IndexedGap {
+  fromLedger: number;
+  toLedger: number;
+  reason: string;
+  createdAt: string;
+}
+
+/**
+ * Ledger ranges the live indexer skipped without indexing (see indexer's
+ * IndexerGap). Gaps apply to every contract, so this is not keyed by contract.
+ */
+export async function getIndexedGaps(): Promise<IndexedGap[]> {
+  if (!isIndexerConfigured()) return [];
+  const { rows } = await getPool().query(
+    `SELECT "fromLedger", "toLedger", reason, "createdAt"
+     FROM "IndexerGap"
+     ORDER BY "fromLedger"`
+  );
+  return rows.map((r) => ({
+    fromLedger: r.fromLedger,
+    toLedger: r.toLedger,
+    reason: r.reason,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}

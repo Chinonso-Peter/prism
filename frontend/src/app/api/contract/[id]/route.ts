@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getContractInfo } from "@/lib/soroban";
+import { getIndexedGaps } from "@/lib/indexed-db";
 import { rateLimitRequest } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,10 @@ export async function GET(req: Request, { params }: Params) {
   const limited = rateLimitRequest(req, { scope: "contract-info" });
   if (limited) return limited;
 
-  const info = await getContractInfo(params.id);
+  const [info, historyGaps] = await Promise.all([getContractInfo(params.id), getIndexedGaps()]);
   if (!info) {
     return NextResponse.json({ error: "Contract not found or unreachable" }, { status: 404 });
   }
-  return NextResponse.json(info);
+  // Gaps are ledger ranges the indexer skipped for every contract; the UI can flag them.
+  return NextResponse.json({ ...info, historyGaps });
 }

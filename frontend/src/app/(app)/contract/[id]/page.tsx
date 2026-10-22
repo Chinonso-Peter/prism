@@ -7,10 +7,7 @@ import LiveInvocationHistory from "@/components/LiveInvocationHistory";
 import InvokeTool from "@/components/InvokeTool";
 import LiveEventLog from "@/components/LiveEventLog";
 import CopyButton from "@/components/CopyButton";
-import SectionCount from "@/components/SectionCount";
-
-const EVENTS_LIMIT = 50;
-const INVOCATIONS_LIMIT = 20;
+import SectionHeader from "@/components/SectionHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -66,10 +63,10 @@ export default async function ContractPage({ params }: Props) {
         )}
 
         <section>
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            Storage
-            <SectionCount count={storageCount} />
-          </h2>
+          <SectionHeader
+            title="Storage"
+            count={fullStorage.length > 0 ? fullStorage.length : (info?.instanceStorage ?? []).length}
+          />
           <ContractStorageView
             contractId={contractId}
             instanceStorage={info.instanceStorage ?? []}
@@ -91,28 +88,9 @@ export default async function ContractPage({ params }: Props) {
         </section>
 
         <section>
-          <LiveEventLog
-            contractId={contractId}
-            initialEvents={eventsPage.items}
-            initialNextCursor={eventsPage.nextCursor}
-            limit={EVENTS_LIMIT}
-            rpcFallback={rpcFallback}
-            specs={wasm?.events}
-            title="Events"
-          >
-            <LiveBadge />
-          </LiveEventLog>
+          <LiveEventLog contractId={contractId} initialEvents={events} specs={wasm?.events} />
         </section>
       </div>
     </div>
-  );
-}
-
-function LiveBadge() {
-  return (
-    <span className="flex items-center gap-1.5 text-xs font-normal text-prism-muted">
-      <span className="w-1.5 h-1.5 rounded-full bg-prism-green animate-pulse" />
-      auto-updating
-    </span>
   );
 }
