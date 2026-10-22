@@ -147,6 +147,62 @@ describe("getTransaction", () => {
   });
 });
 
+describe("Horizon failure detail", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("carries and logs the problem detail from a 400", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ title: "Bad Request", detail: "The cursor is malformed." }),
+    }));
+    const { getLatestLedger } = await import("./horizon");
+
+    const err = await getLatestLedger().catch((e) => e);
+    expect(err.status).toBe(400);
+    expect(err.detail).toBe("The cursor is malformed.");
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("The cursor is malformed."));
+  });
+
+  it("falls back to the title when there is no detail", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ title: "Service Unavailable" }),
+    }));
+    const { getLatestLedger } = await import("./horizon");
+
+    const err = await getLatestLedger().catch((e) => e);
+    expect(err.detail).toBe("Service Unavailable");
+  });
+
+  it("does not log a 404 or a body that is not JSON", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ title: "Not Found", detail: "Not Found" }),
+    }));
+    const { getTransaction } = await import("./horizon");
+    await getTransaction("deadbeef").catch(() => {});
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new SyntaxError("Unexpected token <");
+      },
+    }));
+    const err = await getTransaction("deadbeef").catch((e) => e);
+    expect(err.detail).toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("no detail"));
+  });
+});
+
 describe("getAccount", () => {
   const account = {
     account_id: "GCLWKHHH",
