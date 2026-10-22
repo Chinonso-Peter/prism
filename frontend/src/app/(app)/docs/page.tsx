@@ -27,19 +27,19 @@ const endpoints: Endpoint[] = [
     method: "GET",
     path: "/api/contract/:id/events",
     description: "Events emitted by the contract.",
-    params: "limit (default 50)",
+    params: "limit (default 50, max 100), cursor",
     example: "/api/contract/CDPUJYCTPGPEGS6MBXYLEWTYSGCPVKUHCURLF2ORT3RAVL5TF5JKIAI5/events?limit=10",
     notes:
-      "Full history since the indexer started, when one is configured (see indexer/). Otherwise bounded by the RPC node's retention window (~24h on public nodes).",
+      "Full history since the indexer started, when one is configured (see indexer/), newest first. Each response has a nextCursor, null on the last page; pass it back as cursor to get the older events. Without an indexer, the RPC node's retention window (~24h on public nodes) is returned in one response and nextCursor is always null.",
   },
   {
     method: "GET",
     path: "/api/contract/:id/invocations",
     description: "Invocation history for the contract.",
-    params: "limit (default 20)",
+    params: "limit (default 20, max 100), cursor",
     example: "/api/contract/CDPUJYCTPGPEGS6MBXYLEWTYSGCPVKUHCURLF2ORT3RAVL5TF5JKIAI5/invocations",
     notes:
-      "Full history since the indexer started, when one is configured. Otherwise derived from recent events and bounded by the same RPC retention window — contracts that never emit events won't show up.",
+      "Full history since the indexer started, when one is configured, newest first, paged with nextCursor as for events. Otherwise derived from recent events and returned in one response, bounded by the same RPC retention window — contracts that never emit events won't show up.",
   },
   {
     method: "GET",
