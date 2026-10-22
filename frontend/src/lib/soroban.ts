@@ -14,14 +14,8 @@ import {
   scValToDisplay,
 } from "./xdr";
 import { config } from "./config";
-import {
-  getIndexedContract,
-  getIndexedEvents,
-  getIndexedInvocationReturnValue,
-  getIndexedInvocations,
-  getIndexedStorageEntries,
-  isIndexerConfigured,
-} from "./indexed-db";
+import type { HistoryPage, PageRequest } from "./history-cursor";
+import { isIndexerConfigured, getIndexedInvocations, getIndexedEvents, getIndexedStorageEntries } from "./indexed-db";
 
 const RPC_URL = config.sorobanRpcUrl;
 
@@ -169,20 +163,36 @@ export function _clearWasmAbiCacheForTesting(): void {
  * window (public nodes typically retain ~24h) — not full history.
  */
 export async function getContractEvents(contractId: string, limit = 50): Promise<ContractEvent[]> {
+  return (await getContractEventsPage(contractId, { limit })).items;
+}
+
+/**
+ * One page of a contract's events, newest first. The indexer's history pages
+ * by cursor. The RPC fallback only has its retention window, so it returns that
+ * window once and never offers a next page; it has nothing older to continue to.
+ */
+export async function getContractEventsPage(
+  contractId: string,
+  request: PageRequest
+): Promise<HistoryPage<ContractEvent>> {
   if (isIndexerConfigured()) {
-    const indexed = await getIndexedEvents(contractId, limit);
-    return indexed.map((e) => ({
-      id: e.eventId,
-      contractId,
-      type: e.type,
-      topic: e.topic,
-      value: e.value,
-      txHash: e.txHash,
-      ledger: e.ledger,
-      timestamp: e.createdAt,
-    }));
+    const indexed = await getIndexedEvents(contractId, request);
+    return {
+      items: indexed.items.map((e) => ({
+        id: e.eventId,
+        contractId,
+        type: e.type,
+        topic: e.topic,
+        value: e.value,
+        txHash: e.txHash,
+        ledger: e.ledger,
+        timestamp: e.createdAt,
+      })),
+      nextCursor: indexed.nextCursor,
+    };
   }
-  return getContractEventsFromRpc(contractId, limit);
+  if (request.before) return { items: [], nextCursor: null };
+  return { items: await getContractEventsFromRpc(contractId, request.limit), nextCursor: null };
 }
 
 async function getContractEventsFromRpc(contractId: string, limit: number): Promise<ContractEvent[]> {
@@ -213,18 +223,33 @@ async function getContractEventsFromRpc(contractId: string, limit: number): Prom
 }
 
 export async function getInvocationHistory(contractId: string, limit = 20): Promise<InvocationHistoryItem[]> {
-  if (isIndexerConfigured()) {
-    const indexed = await getIndexedInvocations(contractId, limit);
-    return indexed.map((i) => ({
-      txHash: i.txHash,
-      ledger: i.ledger,
-      timestamp: i.createdAt,
-      functionName: i.functionName,
-      args: Array.isArray(i.args) ? i.args.map((a) => String(a)) : undefined,
-      successful: i.successful,
-    }));
-  }
+  return (await getInvocationHistoryPage(contractId, { limit })).items;
+}
 
+/** One page of a contract's invocation history. The RPC fallback pages as getContractEventsPage does. */
+export async function getInvocationHistoryPage(
+  contractId: string,
+  request: PageRequest
+): Promise<HistoryPage<InvocationHistoryItem>> {
+  if (isIndexerConfigured()) {
+    const indexed = await getIndexedInvocations(contractId, request);
+    return {
+      items: indexed.items.map((i) => ({
+        txHash: i.txHash,
+        ledger: i.ledger,
+        timestamp: i.createdAt,
+        functionName: i.functionName,
+        args: Array.isArray(i.args) ? i.args.map((a) => String(a)) : undefined,
+        successful: i.successful,
+      })),
+      nextCursor: indexed.nextCursor,
+    };
+  }
+  if (request.before) return { items: [], nextCursor: null };
+  return { items: await getInvocationHistoryFromRpc(contractId, request.limit), nextCursor: null };
+}
+
+async function getInvocationHistoryFromRpc(contractId: string, limit: number): Promise<InvocationHistoryItem[]> {
   const events = await getContractEventsFromRpc(contractId, 200);
   const txHashes = Array.from(new Set(events.map((e) => e.txHash))).slice(0, limit);
 

@@ -12,6 +12,7 @@ vi.mock("./indexed-db", () => ({
 
 import {
   getContractEvents,
+  getContractEventsPage,
   getContractInfo,
   getInvocationHistory,
   getInvocationReturnValue,
@@ -120,17 +121,20 @@ describe("getInvocationReturnValue", () => {
 describe("getContractEvents", () => {
   it("uses indexed events when the indexer is configured", async () => {
     vi.mocked(isIndexerConfigured).mockReturnValue(true);
-    vi.mocked(getIndexedEvents).mockResolvedValue([
-      {
-        eventId: "indexed-1",
-        type: "contract",
-        topic: ["updated"],
-        value: "hello",
-        txHash: "tx-indexed",
-        ledger: 123,
-        createdAt: "2026-01-01T00:00:00Z",
-      },
-    ]);
+    vi.mocked(getIndexedEvents).mockResolvedValue({
+      items: [
+        {
+          eventId: "indexed-1",
+          type: "contract",
+          topic: ["updated"],
+          value: "hello",
+          txHash: "tx-indexed",
+          ledger: 123,
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      nextCursor: null,
+    });
     const rpcSpy = vi.spyOn(rpc.Server.prototype, "getLatestLedger");
 
     await expect(getContractEvents("contract-id", 3)).resolves.toEqual([
@@ -145,7 +149,27 @@ describe("getContractEvents", () => {
         timestamp: "2026-01-01T00:00:00Z",
       },
     ]);
-    expect(getIndexedEvents).toHaveBeenCalledWith("contract-id", 3);
+    expect(getIndexedEvents).toHaveBeenCalledWith("contract-id", { limit: 3 });
+    expect(rpcSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns a cursor for the next page when the indexer has more events", async () => {
+    vi.mocked(isIndexerConfigured).mockReturnValue(true);
+    vi.mocked(getIndexedEvents).mockResolvedValue({ items: [], nextCursor: "next-page" });
+
+    await expect(getContractEventsPage("contract-id", { limit: 2 })).resolves.toEqual({
+      items: [],
+      nextCursor: "next-page",
+    });
+  });
+
+  it("never continues the RPC fallback, which holds only its retention window", async () => {
+    vi.mocked(isIndexerConfigured).mockReturnValue(false);
+    const rpcSpy = vi.spyOn(rpc.Server.prototype, "getLatestLedger");
+
+    await expect(
+      getContractEventsPage("contract-id", { limit: 2, before: { ledger: 5, id: "row" } })
+    ).resolves.toEqual({ items: [], nextCursor: null });
     expect(rpcSpy).not.toHaveBeenCalled();
   });
 
@@ -184,17 +208,20 @@ describe("getContractEvents", () => {
 describe("getInvocationHistory", () => {
   it("uses indexed invocations when the indexer is configured", async () => {
     vi.mocked(isIndexerConfigured).mockReturnValue(true);
-    vi.mocked(getIndexedInvocations).mockResolvedValue([
-      {
-        txHash: "indexed-tx",
-        ledger: 123,
-        createdAt: "2026-01-01T00:00:00Z",
-        functionName: "increment",
-        args: [1, true],
-        successful: true,
-        sourceAccount: "GABC",
-      },
-    ]);
+    vi.mocked(getIndexedInvocations).mockResolvedValue({
+      items: [
+        {
+          txHash: "indexed-tx",
+          ledger: 123,
+          createdAt: "2026-01-01T00:00:00Z",
+          functionName: "increment",
+          args: [1, true],
+          successful: true,
+          sourceAccount: "GABC",
+        },
+      ],
+      nextCursor: null,
+    });
     const rpcSpy = vi.spyOn(rpc.Server.prototype, "getLatestLedger");
 
     await expect(getInvocationHistory("contract-id", 2)).resolves.toEqual([
@@ -207,7 +234,7 @@ describe("getInvocationHistory", () => {
         successful: true,
       },
     ]);
-    expect(getIndexedInvocations).toHaveBeenCalledWith("contract-id", 2);
+    expect(getIndexedInvocations).toHaveBeenCalledWith("contract-id", { limit: 2 });
     expect(rpcSpy).not.toHaveBeenCalled();
   });
 

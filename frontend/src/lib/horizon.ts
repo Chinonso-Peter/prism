@@ -5,14 +5,16 @@ const BASE_URL = config.horizonUrl;
 
 /**
  * A non-ok response from Horizon, carrying the status so callers can tell
- * "this record doesn't exist" apart from "Horizon didn't answer".
+ * "this record doesn't exist" apart from "Horizon didn't answer". `detail` is
+ * the problem JSON's explanation of the failure, when Horizon sent one.
  */
 export class HorizonError extends Error {
   constructor(
     readonly status: number,
-    readonly path: string
+    readonly path: string,
+    readonly detail?: string
   ) {
-    super(`Horizon error ${status}: ${path}`);
+    super(`Horizon error ${status}: ${path}${detail ? ` (${detail})` : ""}`);
     this.name = "HorizonError";
   }
 }
@@ -30,8 +32,26 @@ async function get<T>(path: string, revalidate = REVALIDATE_SHORT): Promise<T> {
     next: { revalidate },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new HorizonError(res.status, path);
+  if (!res.ok) {
+    const detail = await problemDetail(res);
+    // A 404 is an ordinary answer ("no such record"), so it stays out of the log.
+    if (res.status !== 404) console.error(`Horizon ${res.status} for ${path}: ${detail ?? "no detail"}`);
+    throw new HorizonError(res.status, path, detail);
+  }
   return res.json();
+}
+
+/**
+ * Horizon answers failures with a problem JSON document whose `detail` (or
+ * `title`) says what went wrong. A body that isn't JSON has nothing to add.
+ */
+async function problemDetail(res: Response): Promise<string | undefined> {
+  try {
+    const problem = (await res.json()) as { title?: string; detail?: string };
+    return problem.detail || problem.title || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Horizon's JSON as it actually arrives. Worth spelling out rather than
